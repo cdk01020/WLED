@@ -11106,7 +11106,9 @@ void mode_sparkle_build_drain(void) {
     SEGMENT.setPixelColor(i, c);
     heat[i] = (h > decay) ? h - decay : 0;
   }
-  
+  }
+static const char _data_FX_MODE_SPARKLE_BUILD_DRAIN[] PROGMEM = "Sparkle Build Drain@Speed,Density,Fade speed,,,Top down;!,!;!;1";
+
 
 void WS2812FX::setupEffectData() {
   // Solid must be first! (assuming vector is empty upon call to setup)
