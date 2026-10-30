@@ -11052,6 +11052,63 @@ uint8_t WS2812FX::addEffect(uint8_t id, mode_ptr mode_fn, const char *mode_name)
     return 255; // The vector is full so return 255
   }
 }
+uint16_t mode_sparkle_build_drain(void) {
+  const uint16_t len = SEGLEN;
+  if (!SEGENV.allocateData(len * 2)) return mode_static();
+  uint8_t* heat = SEGENV.data;        // 255 = white-hot, 0 = dark
+  uint8_t* hue  = SEGENV.data + len;  // palette index per sparkle
+
+  if (SEGENV.call == 0) {
+    memset(SEGENV.data, 0, len * 2);
+    SEGENV.aux0 = 0;   // front position
+    SEGENV.aux1 = 0;   // phase: 0 build, 1 hold, 2 drain, 3 rest
+    SEGENV.step = 0;   // phase timer
+  }
+
+  const uint8_t stepPx = 1 + (SEGMENT.speed >> 4);
+  switch (SEGENV.aux1) {
+    case 0:
+      SEGENV.aux0 += stepPx;
+      if (SEGENV.aux0 >= len) { SEGENV.aux0 = len; SEGENV.aux1 = 1; SEGENV.step = strip.now; }
+      break;
+    case 1:
+      if (strip.now - SEGENV.step > 3000) SEGENV.aux1 = 2;
+      break;
+    case 2:
+      if (SEGENV.aux0 <= stepPx) { SEGENV.aux0 = 0; SEGENV.aux1 = 3; SEGENV.step = strip.now; }
+      else SEGENV.aux0 -= stepPx;
+      break;
+    case 3:
+      if (strip.now - SEGENV.step > 1000) SEGENV.aux1 = 0;
+      break;
+  }
+
+  // Spawn sparkles inside the active region
+  const uint16_t front = SEGENV.aux0;
+  if (front > 0) {
+    uint16_t count = 1 + (((uint32_t)front * (SEGMENT.intensity + 1)) >> 12);
+    for (uint16_t n = 0; n < count; n++) {
+      uint16_t pos = random16(front);
+      uint16_t idx = SEGMENT.check1 ? (len - 1 - pos) : pos;  // check1 = top down
+      heat[idx] = 255;
+      hue[idx]  = random8();
+    }
+  }
+
+  // Render + cool
+  const uint8_t decay = 3 + (SEGMENT.custom1 >> 4);
+  for (uint16_t i = 0; i < len; i++) {
+    uint8_t h = heat[i];
+    if (h == 0) { SEGMENT.setPixelColor(i, BLACK); continue; }
+    uint32_t base = SEGMENT.color_from_palette(hue[i], false, false, 0);
+    uint32_t c = (h > 170) ? color_blend(base, WHITE, (h - 170) * 3)   // white -> color
+                           : color_blend(BLACK, base, h + (h >> 1));   // color -> dark
+    SEGMENT.setPixelColor(i, c);
+    heat[i] = (h > decay) ? h - decay : 0;
+  }
+  return FRAMETIME;
+}
+static const char _data_FX_MODE_SPARKLE_BUILD_DRAIN[] PROGMEM = "Sparkle Build Drain@Speed,Density,Fade speed,,,Top down;!,!;!;1";
 
 void WS2812FX::setupEffectData() {
   // Solid must be first! (assuming vector is empty upon call to setup)
@@ -11064,6 +11121,8 @@ void WS2812FX::setupEffectData() {
   }
   // now replace all pre-allocated effects
   addEffect(FX_MODE_COPY, &mode_copy_segment, _data_FX_MODE_COPY);
+  addEffect(FX_MODE_SPARKLE_BUILD_DRAIN, &mode_sparkle_build_drain, _data_FX_MODE_SPARKLE_BUILD_DRAIN);
+
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);
   addEffect(FX_MODE_BREATH, &mode_breath, _data_FX_MODE_BREATH);
