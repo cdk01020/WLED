@@ -11052,7 +11052,7 @@ uint8_t WS2812FX::addEffect(uint8_t id, mode_ptr mode_fn, const char *mode_name)
     return 255; // The vector is full so return 255
   }
 }
-void mode_sparkle_build_drain(void) {{
+void mode_sparkle_build_drain(void) {
   const uint16_t len = SEGLEN;
   if (!SEGENV.allocateData(len * 2)) { mode_static(); return; }
   uint8_t* heat = SEGENV.data;        // 255 = white-hot, 0 = dark
