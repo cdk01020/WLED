@@ -11511,6 +11511,28 @@ static const char _data_FX_MODE_HALLOWEEN_GHOSTS[] PROGMEM = "Halloween Ghost Or
 struct HwEye { uint32_t t0, dur, nextBlink, blinkT, until; uint16_t pos; uint8_t state, col; };
 struct HwEyes { uint32_t nextScare, scareT; HwEye e[24]; };
 
+// random time until the next blink, shorter with a higher Blink rate
+static uint32_t hwBlinkGap() {
+  const uint32_t base = 4200 - (uint32_t)SEGMENT.speed * 3400 / 255;
+  return (uint32_t)(base * (0.5f + hwRand()));
+}
+// open an eye pair at a free spot that doesn't crowd another open pair; leaves it closed if none is found
+static void hwOpenEye(HwEyes* st, int idx, int count, int gap, uint16_t len, uint8_t numColors, uint32_t now, uint32_t dur) {
+  for (int tries = 0; tries < 25; tries++) {
+    const int p = 1 + (int)hw_random16(len - gap - 3);
+    bool ok = true;
+    for (int k = 0; k < count && ok; k++) {
+      const int dist = (int)st->e[k].pos - p;
+      if (st->e[k].state && dist <= gap + 5 && dist >= -(gap + 5)) ok = false;
+    }
+    if (!ok) continue;
+    HwEye& eye = st->e[idx];
+    eye.state = 1; eye.pos = p; eye.t0 = now; eye.dur = dur;
+    eye.nextBlink = now + hwBlinkGap(); eye.blinkT = now - 10000; eye.col = hw_random8(numColors);
+    return;
+  }
+}
+
 void mode_halloween_eyes(void) {
   const uint16_t len = SEGLEN;
   if (len < 12 || !SEGENV.allocateData(sizeof(HwEyes))) { mode_static(); return; }
@@ -11521,69 +11543,67 @@ void mode_halloween_eyes(void) {
     st->nextScare = now + 14000; st->scareT = now - 100000;
     for (int k = 0; k < 24; k++) st->e[k].until = now + hw_random16(4000);
   }
-  uint32_t colors[3]; uint8_t numColors = 0;
+  uint32_t colors[3];
+  uint8_t numColors = 0;
   colors[numColors++] = SEGCOLOR(0);
   if (SEGCOLOR(1) != BLACK) colors[numColors++] = SEGCOLOR(1);
   if (SEGCOLOR(2) != BLACK) colors[numColors++] = SEGCOLOR(2);
 
   const int count = 2 + (SEGMENT.intensity * 22 + 127) / 255;
   const int gap = 1 + (SEGMENT.custom1 * 3 + 127) / 255;
-  const uint32_t blinkBase = 4200 - SEGMENT.speed * 3400 / 255;
-  auto blinkGap = [&]() -> uint32_t { return (uint32_t)(blinkBase * (0.5f + hwRand())); };
-  // find a free position that doesn't crowd another open pair; returns -1 if none
-  auto freePos = [&]() -> int {
-    for (int tries = 0; tries < 25; tries++) {
-      const int p = 1 + hw_random16(len - gap - 3);
-      bool ok = true;
-      for (int k = 0; k < count && ok; k++) if (st->e[k].state && abs((int)st->e[k].pos - p) <= gap + 5) ok = false;
-      if (ok) return p;
-    }
-    return -1;
-  };
-  auto openEye = [&](HwEye& e, uint32_t dur) {
-    const int p = freePos(); if (p < 0) return;
-    e.state = 1; e.pos = p; e.t0 = now; e.dur = dur; e.nextBlink = now + blinkGap(); e.blinkT = now - 10000; e.col = hw_random8(numColors);
-  };
+  const int maxPos = len - gap - 3;
 
+  // jump scare: every closed pair opens at once, open ones stay open through it
   if (SEGMENT.check1 && (int32_t)(now - st->nextScare) >= 0) {
     st->scareT = now; st->nextScare = now + 18000 + hw_random16(16000);
     for (int k = 0; k < count; k++) {
-      HwEye& e = st->e[k];
-      if (!e.state) openEye(e, 1500);
-      else if (e.dur < now - e.t0 + 1500) e.dur = now - e.t0 + 1500;
+      if (!st->e[k].state) hwOpenEye(st, k, count, gap, len, numColors, now, 1500);
+      else if (st->e[k].dur < now - st->e[k].t0 + 1500) st->e[k].dur = now - st->e[k].t0 + 1500;
     }
   }
   const bool scaring = (now - st->scareT) < 1400;
 
   SEGMENT.fill(BLACK);
   for (int k = 0; k < count; k++) {
-    HwEye& e = st->e[k];
-    if (!e.state) {
-      if ((int32_t)(now - e.until) >= 0 && !scaring) openEye(e, (uint32_t)((1500.0f + SEGMENT.custom2 / 255.0f * 7000.0f) * (0.6f + hwRand() * 0.8f)));
+    HwEye& eye = st->e[k];
+    if (!eye.state) {
+      if ((int32_t)(now - eye.until) >= 0 && !scaring)
+        hwOpenEye(st, k, count, gap, len, numColors, now, (uint32_t)((1500.0f + SEGMENT.custom2 / 255.0f * 7000.0f) * (0.6f + hwRand() * 0.8f)));
       continue;
     }
-    if (e.pos + gap + 2 >= len) e.pos = len - gap - 3;  // segment got shorter
-    const uint32_t age = now - e.t0;
-    if (age >= e.dur + 300) { e.state = 0; e.until = now + 800 + hw_random16(5000); continue; }
-    float lid = min(1.0f, age / 350.0f) * min(1.0f, (float)(e.dur + 300 - age) / 300.0f);
-    if ((int32_t)(now - e.nextBlink) >= 0 && !scaring) {
-      e.blinkT = now; e.nextBlink = now + (hw_random8() < 64 ? 260 : blinkGap());  // sometimes a double blink
-      if (hw_random8() < 77) {  // glance sideways
-        int p = (int)e.pos + (hw_random8() < 128 ? -1 : 1);
-        e.pos = constrain(p, 1, len - gap - 3);
+    if ((int)eye.pos > maxPos) eye.pos = maxPos;  // segment got shorter or spacing grew
+    const uint32_t age = now - eye.t0;
+    if (age >= eye.dur + 300) { eye.state = 0; eye.until = now + 800 + hw_random16(5000); continue; }
+    const float opening = age < 350 ? age / 350.0f : 1.0f;
+    const uint32_t left = eye.dur + 300 - age;
+    const float closing = left < 300 ? left / 300.0f : 1.0f;
+    float lid = opening * closing;
+    if ((int32_t)(now - eye.nextBlink) >= 0 && !scaring) {
+      eye.blinkT = now;
+      eye.nextBlink = now + ((hw_random8() < 64) ? 260U : hwBlinkGap());  // sometimes a double blink
+      if (hw_random8() < 77) {  // glance one pixel sideways
+        int p = (int)eye.pos + ((hw_random8() < 128) ? -1 : 1);
+        if (p < 1) p = 1;
+        if (p > maxPos) p = maxPos;
+        eye.pos = p;
       }
     }
-    const uint32_t db = now - e.blinkT;
-    if (db < 180) lid *= db < 70 ? 1.0f - db / 70.0f : (db < 110 ? 0.0f : (db - 110) / 70.0f);
+    const uint32_t db = now - eye.blinkT;
+    if (db < 180) {
+      if (db < 70) lid *= 1.0f - db / 70.0f;
+      else if (db < 110) lid = 0.0f;
+      else lid *= (db - 110) / 70.0f;
+    }
     if (scaring) lid = 1.0f;
-    const float b = lid * (0.85f + 0.15f * sin_approx(now * 0.003f + e.pos)) * (scaring ? 1.15f : 1.0f);
-    const uint32_t c = colors[e.col % numColors];
-    SEGMENT.addPixelColor(e.pos, hwColor(c, b));
-    SEGMENT.addPixelColor(e.pos + gap + 1, hwColor(c, b));
-    if (SEGMENT.check2) {
-      SEGMENT.addPixelColor(e.pos - 1, hwColor(c, b * 0.12f));
-      SEGMENT.addPixelColor(e.pos + gap + 2, hwColor(c, b * 0.12f));
-      for (int g = 1; g <= gap; g++) SEGMENT.addPixelColor(e.pos + g, hwColor(c, b * 0.05f));
+    const float bright = lid * (0.85f + 0.15f * sin_approx((float)(now % 100000U) * 0.003f + eye.pos)) * (scaring ? 1.15f : 1.0f);
+    const uint32_t c = colors[eye.col % numColors];
+    const int p0 = eye.pos, p1 = eye.pos + gap + 1;
+    SEGMENT.addPixelColor(p0, hwColor(c, bright));
+    SEGMENT.addPixelColor(p1, hwColor(c, bright));
+    if (SEGMENT.check2) {  // soft glow around and between the eyes
+      SEGMENT.addPixelColor(p0 - 1, hwColor(c, bright * 0.12f));
+      SEGMENT.addPixelColor(p1 + 1, hwColor(c, bright * 0.12f));
+      for (int q = p0 + 1; q < p1; q++) SEGMENT.addPixelColor(q, hwColor(c, bright * 0.05f));
     }
   }
 }
