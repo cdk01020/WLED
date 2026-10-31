@@ -376,7 +376,7 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_CHASE_FIREWORK_FILL    221
 #define FX_MODE_HALLOWEEN_CAULDRON     222
 #define FX_MODE_HALLOWEEN_GHOSTS       223
-#define FX_MODE_HALLOWEEN_EYES         224
+#define FX_MODE_HALLOWEEN_HAUNTED_EYES 224
 #define FX_MODE_HALLOWEEN_SPIDERS      225
 #define FX_MODE_HALLOWEEN_HEART        226
 #define MODE_COUNT                     227

@@ -11533,7 +11533,7 @@ static void hwOpenEye(HwEyes* st, int idx, int count, int gap, uint16_t len, uin
   }
 }
 
-void mode_halloween_eyes(void) {
+void mode_halloween_haunted_eyes(void) {
   const uint16_t len = SEGLEN;
   if (len < 12 || !SEGENV.allocateData(sizeof(HwEyes))) { mode_static(); return; }
   HwEyes* st = reinterpret_cast<HwEyes*>(SEGENV.data);
@@ -11607,7 +11607,7 @@ void mode_halloween_eyes(void) {
     }
   }
 }
-static const char _data_FX_MODE_HALLOWEEN_EYES[] PROGMEM = "Halloween Haunted Eyes@Blink rate,Eyes,Eye spacing,Stare time,,Jump scare,Glow;Eyes 1,Eyes 2,Eyes 3;;1;sx=110,ix=120,c1=60,c2=130,o1=1,o2=1";
+static const char _data_FX_MODE_HALLOWEEN_HAUNTED_EYES[] PROGMEM = "Halloween Haunted Eyes@Blink rate,Eyes,Eye spacing,Stare time,,Jump scare,Glow;Eyes 1,Eyes 2,Eyes 3;;1;sx=110,ix=120,c1=60,c2=130,o1=1,o2=1";
 
 /*
  * Halloween Spider Drop: red-eyed spiders drop from the top on silk, dangle (and wiggle), then climb back.
@@ -11757,7 +11757,7 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_CHASE_FIREWORK_FILL, &mode_chase_firework_fill, _data_FX_MODE_CHASE_FIREWORK_FILL);
   addEffect(FX_MODE_HALLOWEEN_CAULDRON, &mode_halloween_cauldron, _data_FX_MODE_HALLOWEEN_CAULDRON);
   addEffect(FX_MODE_HALLOWEEN_GHOSTS, &mode_halloween_ghosts, _data_FX_MODE_HALLOWEEN_GHOSTS);
-  addEffect(FX_MODE_HALLOWEEN_EYES, &mode_halloween_eyes, _data_FX_MODE_HALLOWEEN_EYES);
+  addEffect(FX_MODE_HALLOWEEN_HAUNTED_EYES, &mode_halloween_haunted_eyes, _data_FX_MODE_HALLOWEEN_HAUNTED_EYES);
   addEffect(FX_MODE_HALLOWEEN_SPIDERS, &mode_halloween_spiders, _data_FX_MODE_HALLOWEEN_SPIDERS);
   addEffect(FX_MODE_HALLOWEEN_HEART, &mode_halloween_heart, _data_FX_MODE_HALLOWEEN_HEART);
 
