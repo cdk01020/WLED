@@ -10968,6 +10968,70 @@ uint8_t WS2812FX::addEffect(uint8_t id, mode_ptr mode_fn, const char *mode_name)
     return 255; // The vector is full so return 255
   }
 }
+static void sbd_shuffle(uint16_t* o, uint16_t len) {
+  for (uint16_t i = 0; i < len; i++) o[i] = i;
+  for (uint16_t i = len - 1; i > 0; i--) {
+    uint16_t j = hw_random16(i + 1);
+    uint16_t t = o[i]; o[i] = o[j]; o[j] = t;
+  }
+}
+
+void mode_sparkle_build_drain(void) {
+  const uint16_t len = SEGLEN;
+  if (!SEGENV.allocateData(len * 4)) { mode_static(); return; }
+  uint8_t* heat = SEGENV.data;
+  uint8_t* hue  = SEGENV.data + len;
+  uint16_t* order = (uint16_t*)(SEGENV.data + len * 2);
+
+  if (SEGENV.call == 0) {
+    memset(SEGENV.data, 0, len * 2);
+    SEGENV.aux0 = 0;
+    SEGENV.aux1 = 0;
+    SEGENV.step = 0;
+  }
+  if (SEGENV.call == 0 || (len > 1 && order[0] == 0 && order[len - 1] == 0)) sbd_shuffle(order, len);
+
+  const uint8_t stepPx = 1 + (SEGMENT.speed >> 4);
+  switch (SEGENV.aux1) {
+    case 0:
+      SEGENV.aux0 += stepPx;
+      if (SEGENV.aux0 >= len) { SEGENV.aux0 = len; SEGENV.aux1 = 1; SEGENV.step = strip.now; }
+      break;
+    case 1:
+      if (strip.now - SEGENV.step > (uint32_t)SEGMENT.custom2 * 24) SEGENV.aux1 = 2;
+      break;
+    case 2:
+      if (SEGENV.aux0 <= stepPx) { SEGENV.aux0 = 0; SEGENV.aux1 = 3; SEGENV.step = strip.now; }
+      else SEGENV.aux0 -= stepPx;
+      break;
+    case 3:
+      if (strip.now - SEGENV.step > 1000) { SEGENV.aux1 = 0; sbd_shuffle(order, len); }
+      break;
+  }
+
+  const uint16_t front = SEGENV.aux0;
+  if (front > 0) {
+    uint16_t count = 1 + (((uint32_t)front * (SEGMENT.intensity + 1)) >> 12);
+    for (uint16_t n = 0; n < count; n++) {
+      uint16_t pos = hw_random16(front);
+      uint16_t idx = SEGMENT.check2 ? order[pos] : (SEGMENT.check1 ? (len - 1 - pos) : pos);
+      heat[idx] = 255;
+      hue[idx]  = hw_random8();
+    }
+  }
+
+  const uint8_t decay = 3 + (SEGMENT.custom1 >> 4);
+  for (uint16_t i = 0; i < len; i++) {
+    uint8_t h = heat[i];
+    if (h == 0) { SEGMENT.setPixelColor(i, BLACK); continue; }
+    uint32_t base = SEGMENT.color_from_palette(hue[i], false, false, 0);
+    uint32_t c = (h > 170) ? color_blend(base, WHITE, (h - 170) * 3)
+                           : color_blend(BLACK, base, h + (h >> 1));
+    SEGMENT.setPixelColor(i, c);
+    heat[i] = (h > decay) ? h - decay : 0;
+  }
+}
+static const char _data_FX_MODE_SPARKLE_BUILD_DRAIN[] PROGMEM = "Sparkle Build Drain@Speed,Density,Fade speed,Hold time,,Top down,Random;!,!;!;1";
 
 void WS2812FX::setupEffectData() {
   // Solid must be first! (assuming vector is empty upon call to setup)
