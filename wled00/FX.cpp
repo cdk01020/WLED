@@ -11044,6 +11044,8 @@ void WS2812FX::setupEffectData() {
   }
   // now replace all pre-allocated effects
   addEffect(FX_MODE_COPY, &mode_copy_segment, _data_FX_MODE_COPY);
+  addEffect(FX_MODE_SPARKLE_BUILD_DRAIN, &mode_sparkle_build_drain, _data_FX_MODE_SPARKLE_BUILD_DRAIN);
+
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);
   addEffect(FX_MODE_BREATH, &mode_breath, _data_FX_MODE_BREATH);
