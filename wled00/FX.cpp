@@ -11884,7 +11884,7 @@ void mode_xmas_snowman(void) {
         float best = 0.0f;
         for (int k = 0; k < 3; k++) {
           if (g[k] <= 0.0f) continue;
-          const float rh = br[k] * g[k], rp = rh * 1.05f;
+          const float rh = br[k] * g[k], rp = rh * 1.3f;  // wider than tall: the strand has far more pixels around than up
           const float dh = (h - bc[k]) / rh, dp = arc / rp;
           const float d = sqrtf(dh * dh + dp * dp);
           const float v = hwSmooth((1.0f - d) / 0.3f) * (0.75f + 0.25f * hwClamp01(1.0f - d));
