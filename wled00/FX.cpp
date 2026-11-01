@@ -12126,7 +12126,7 @@ void mode_xmas_dressed(void) {
   const float tt = st->tt;
   const float N = hwWraps();
   const uint32_t tinsel = SEGCOLOR(0), orn1 = xmOr(SEGCOLOR(1), RED), orn2 = xmOr(SEGCOLOR(2), 0x2050FF);
-  const uint32_t needle = 0x0B5A18, warm = 0xFFB060;
+  const uint32_t needle = 0x10A030, warm = 0xFFB060;
   const float spd = 0.3f + SEGMENT.speed / 255.0f * 2.0f;
   const float glow = 0.25f + SEGMENT.custom1 / 255.0f * 0.75f;
   const float G = 4.0f, wt = (0.3f + SEGMENT.custom2 / 255.0f * 0.5f) / N;
@@ -12148,7 +12148,7 @@ void mode_xmas_dressed(void) {
       if (du < 2.5f) {
         const float gv = hwGauss(du * du);
         const float sh = 0.55f + 0.45f * hwHash2(i, (int32_t)(tt * 14.0f)) + 0.4f * powf(0.5f + 0.5f * sin_approx(a * 3.0f - tt * spd * 3.0f), 6.0f);
-        c = hwMix(c, hwColor(tinsel, sh), gv);
+        c = hwMix(c, hwColor(tinsel, sh * 0.8f), gv);
       }
     }
     if (SEGMENT.check3 && h > 0.9f) {  // star on top
@@ -12168,7 +12168,7 @@ void mode_xmas_dressed(void) {
     hwBlob(len, N, hk + 0.25f / N, ak - xmArcToAng(hl, hk), 0.3f / N, 0.01f, WHITE, 0.55f);
   }
 }
-static const char _data_FX_MODE_XMAS_DRESSED[] PROGMEM = "Christmas Dressed Tree@Shimmer speed,Ornaments,Needle glow,Tinsel width,Tree wraps,Tinsel garland,Twinkle lights,Star on top;Tinsel,Ornament 1,Ornament 2;;1;sx=90,ix=140,c1=150,c2=110,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_XMAS_DRESSED[] PROGMEM = "Christmas Dressed Tree@Shimmer speed,Ornaments,Needle glow,Tinsel width,Tree wraps,Tinsel garland,Twinkle lights,Star on top;Tinsel,Ornament 1,Ornament 2;;1;sx=90,ix=140,c1=150,c2=50,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Christmas Frost: under a deep night sky, frost crystals creep up the tree along branching veins, each
