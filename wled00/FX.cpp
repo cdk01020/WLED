@@ -11749,19 +11749,6 @@ static const char _data_FX_MODE_HALLOWEEN_HEART[] PROGMEM = "Halloween Possessed
  * pixel 0 is the bottom, "Tree wraps" (c3) is how many times the strand goes around the tree.
  */
 
-// pixel closest to height h / angle a on the tree surface
-static int xmNearest(uint16_t len, float N, float h, float a) {
-  int lo = (int)hwIndexAt(h - 0.75f / N, len);
-  int hi = (int)ceilf(hwIndexAt(h + 0.75f / N, len));
-  if (hi > len - 1) hi = len - 1;
-  int best = lo; float bd = 1e9f;
-  for (int i = lo; i <= hi; i++) {
-    const float hh = hwHeight(i, len), dh = hh - h, da = hwArc(hh, N, a);
-    const float d = dh * dh + da * da;
-    if (d < bd) { bd = d; best = i; }
-  }
-  return best;
-}
 // angle that spans an arc of length s (in tree heights) around the trunk at height h
 static inline float xmArcToAng(float s, float h) { return s / (HW_RAD * (1.0f - h) + 0.012f); }
 static inline uint32_t xmOr(uint32_t c, uint32_t fallback) { return c == BLACK ? fallback : c; }
@@ -11826,306 +11813,311 @@ void mode_xmas_candycane(void) {
 }
 static const char _data_FX_MODE_XMAS_CANDYCANE[] PROGMEM = "Christmas Candy Cane@Spin speed,Stripes,Red width,Twist,Tree wraps,Reverse,Sugar sparkle,Wrap on/off;Stripe,Cane,Pinstripe;;1;sx=60,ix=80,c1=110,c2=90,c3=12,o2=1";
 
+// height of the strand row closest to hTarget at angle a0 (rows at one angle are 1/N apart)
+static float xmRowAt(float hTarget, float a0, float N) {
+  const float fa = xmFrac(a0 / HW_TAU);
+  const float k = floorf(hTarget * N - fa + 0.5f);
+  return (fa + k) / N;
+}
+// pixel on the row at height hRow, moved sideways by angle da (positive = along the strand)
+static inline int xmPix(float hRow, float da, uint16_t len, float N) {
+  int i = (int)(hwIndexAt(hRow + da / (HW_TAU * N), len) + 0.5f);
+  return i < 0 ? 0 : (i > len - 1 ? len - 1 : i);
+}
+// shared twinkle: 0..1 bursts on a few pixels, amount 0..1 sets how many
+static inline float xmTwinkle(int i, float tt, float amount, int32_t salt) {
+  const float x = tt * 3.0f + hwHash2(i, salt) * 8.0f;
+  if (hwHash2(i, (int32_t)x + salt) > 1.0f - amount * 0.12f) return sin_approx(xmFrac(x) * 3.14159f);
+  return 0.0f;
+}
+
 /*
- * Christmas Snowman: snow falls and piles up around the bottom of the tree, three snowballs roll in and
- * stack into a snowman, then his coal eyes, carrot nose, buttons, scarf and hat appear. Optionally he
- * waves, slowly turns so every side of the tree sees him, and melts away so it can start over.
+ * Christmas Snowman: the whole tree becomes one giant snowman. Three stacked snowballs fill the tree,
+ * a striped scarf wraps the neck with a tail that flutters, and a knit beanie with a pom-pom sits on the
+ * tip. His face (coal eyes, carrot nose, rosy cheeks, coal smile), buttons and stick arms are on one side
+ * and can slowly turn so the face travels around the tree. He blinks and waves; the snow glitters.
  */
-struct XmFlake { float h, a, v, ph; };
-struct XmSnowman { uint32_t last; float tt, pt, pile, turn; uint8_t phase; XmFlake f[48]; };
+struct XmSnowman { uint32_t last, nextBlink, blinkT; float tt, turn; };
 
 void mode_xmas_snowman(void) {
   const uint16_t len = SEGLEN;
-  if (len < 12 || !SEGENV.allocateData(sizeof(XmSnowman))) { mode_static(); return; }
+  if (len < 50 || !SEGENV.allocateData(sizeof(XmSnowman))) { mode_static(); return; }
   XmSnowman* st = reinterpret_cast<XmSnowman*>(SEGENV.data);
-  if (SEGENV.call == 0) {
-    memset(st, 0, sizeof(XmSnowman)); st->last = strip.now;
-    for (int k = 0; k < 48; k++) { st->f[k].h = hwRand(); st->f[k].a = hwRand() * HW_TAU; st->f[k].v = 0.04f + hwRand() * 0.05f; st->f[k].ph = hwRand() * HW_TAU; }
-  }
+  const uint32_t now = strip.now;
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmSnowman)); st->last = now; st->nextBlink = now + 2500; st->blinkT = now - 10000; }
   const float dts = hwFrame(st->last, st->tt), tt = st->tt;
   const float N = hwWraps();
-  const uint32_t snow = SEGCOLOR(0), nose = xmOr(SEGCOLOR(1), 0xFF5A00), scarf = xmOr(SEGCOLOR(2), 0xE00000);
+  const uint32_t snow = xmOr(SEGCOLOR(0), WHITE), carrot = xmOr(SEGCOLOR(1), 0xFF5A00), hat = xmOr(SEGCOLOR(2), 0xD00000);
+  const uint32_t cheek = 0xFF4060, stick = 0x5A2A08;
 
-  // phases: 0 snowfall, 1 build, 2 hold, 3 melt
-  const float pace = 0.5f + SEGMENT.speed / 255.0f * 1.5f;
-  const float dur[4] = { 8.0f / pace, 9.0f / pace, 4.0f + SEGMENT.custom2 / 255.0f * 56.0f, 6.0f / pace };
-  st->pt += dts;
-  if (st->pt >= dur[st->phase] && !(st->phase == 2 && !SEGMENT.check1)) { st->pt = 0.0f; st->phase = (st->phase + 1) & 3; }
-  const float p = hwClamp01(st->pt / dur[st->phase]);
-  if (st->phase == 0) st->pile += (0.075f - st->pile) * min(1.0f, dts * 0.5f * pace);
-  if (st->phase == 3) st->pile = 0.075f * (1.0f - p);
-  if (SEGMENT.check3) { st->turn += dts * 0.12f; if (st->turn > HW_TAU) st->turn -= HW_TAU; }
-
-  // how much of each part is there: base, middle, head (grow in), face (fade in); melt shrinks everything
-  float g[4] = { 0, 0, 0, 0 };
-  if (st->phase == 1) for (int k = 0; k < 4; k++) g[k] = hwSmooth(p * 4.0f - k);
-  else if (st->phase >= 2) for (int k = 0; k < 4; k++) g[k] = 1.0f;
-  const float m = (st->phase == 3) ? hwSmooth(p) : 0.0f;
-  const float s = 0.75f + SEGMENT.custom1 / 255.0f * 0.45f;
-  const float sink = 1.0f - 0.75f * m, shrink = 1.0f - 0.55f * m, fade = 1.0f - m;
+  if (SEGMENT.check1) { st->turn += dts * (0.05f + SEGMENT.speed / 255.0f * 0.6f); if (st->turn > HW_TAU) st->turn -= HW_TAU; }
   const float A0 = st->turn;
-  const float bc[3] = { 0.15f * s * sink, 0.39f * s * sink, 0.585f * s * sink };
-  const float br[3] = { 0.14f * s * shrink, 0.105f * s * shrink, 0.08f * s * shrink };
-  const float top = bc[2] + br[2] + 0.12f;
+  const float fs = 0.8f + SEGMENT.custom1 / 255.0f * 0.5f;
+  const float glitter = SEGMENT.check3 ? SEGMENT.intensity / 255.0f : 0.0f;
+  const float flutter = 1.0f + SEGMENT.custom2 / 255.0f * 5.0f;
+  if (SEGMENT.check2 && (int32_t)(now - st->nextBlink) >= 0) { st->blinkT = now; st->nextBlink = now + 2500 + hw_random16(4000); }
+  const bool blinking = SEGMENT.check2 && (now - st->blinkT) < 170;
+
+  // face rows snap to the strand so eyes, nose and mouth always land on three different rows
+  const float eyeRow = xmRowAt(0.80f, A0, N), noseRow = eyeRow - 1.0f / N, mouthRow = eyeRow - 2.0f / N;
+  const float lo[3] = { 0.0f, 0.36f, 0.58f }, hi[3] = { 0.36f, 0.58f, 0.86f };
+  const float tailA = A0 + 0.75f;
 
   for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len);
-    uint32_t c = BLACK;
-    // snow pile with a rippled top edge
-    const float a = HW_TAU * N * h;
-    const float edge = st->pile + 0.012f * (hwNoise(cos_approx(a) * 2.0f, sin_approx(a) * 2.0f) - 0.5f);
-    if (h < edge) {
-      const float n = hwNoise(cos_approx(a) * 3.0f + 5.0f, h * 30.0f + sin_approx(a) * 3.0f);
-      c = hwColor(snow, 0.35f + 0.35f * n + 0.4f * hwSmooth(1.0f - (edge - h) / 0.02f));
-    }
-    if (h < top) {
-      const float arc = hwArc(h, N, A0);
-      if (arc < 0.25f) {
-        float best = 0.0f;
-        for (int k = 0; k < 3; k++) {
-          if (g[k] <= 0.0f) continue;
-          const float rh = br[k] * g[k], rp = rh * 1.3f;  // wider than tall: the strand has far more pixels around than up
-          const float dh = (h - bc[k]) / rh, dp = arc / rp;
-          const float d = sqrtf(dh * dh + dp * dp);
-          const float v = hwSmooth((1.0f - d) / 0.3f) * (0.75f + 0.25f * hwClamp01(1.0f - d));
-          if (v > best) best = v;
-        }
-        if (best > 0.0f) c = hwMix(c, hwColor(snow, fade), best);
-        if (g[3] > 0.0f) {
-          const float k3 = g[3] * fade;
-          // scarf around the neck, with a tail hanging down one side
-          const float sh = bc[1] + br[1] * 0.9f;
-          if (fabsf(h - sh) < 0.42f / N && arc < br[1] * 0.95f) c = hwMix(c, scarf, k3);
-          const float tailA = hwAngDiff(HW_TAU * N * h, A0 + xmArcToAng(br[1] * 0.55f, h));
-          if (h < sh && h > sh - br[1] * 0.9f && fabsf(tailA) * (HW_RAD * (1.0f - h) + 0.012f) < 0.022f) c = hwMix(c, scarf, k3);
-          // hat: brim and crown above the head
-          const float hb = bc[2] + br[2] * 0.85f;
-          if (h > hb - 0.2f / N && h < hb + 0.25f / N && arc < br[2] * 1.25f) c = hwMix(c, scarf, k3);
-          else if (h >= hb + 0.25f / N && h < hb + 0.25f / N + 0.08f * s && arc < br[2] * 0.75f) c = hwMix(c, scarf, k3);
+    const float h = hwHeight(i, len), a = HW_TAU * N * h;
+    const float d = hwAngDiff(a, A0), rr = HW_RAD * (1.0f - h) + 0.012f, s = d * rr;
+    const float front = 0.86f + 0.14f * cos_approx(d);
+    uint32_t c;
+    if (h < 0.86f) {
+      const int b = h < 0.36f ? 0 : (h < 0.58f ? 1 : 2);
+      const float t = (h - lo[b]) / (hi[b] - lo[b]);
+      const float shade = 0.45f + 0.55f * sqrtf(max(0.0f, sin_approx(3.14159f * t)));
+      c = hwColor(snow, 0.78f * shade * front);
+      if (b == 2) {  // rosy cheeks
+        const float dh = (h - (noseRow - 0.2f / N)) * N * 1.6f;
+        for (int sd = -1; sd <= 1; sd += 2) {
+          const float ds = (s - sd * 0.11f * fs) / 0.035f;
+          const float v = hwGauss(dh * dh + ds * ds);
+          if (v > 0.05f) c = hwMix(c, cheek, v * 0.75f);
         }
       }
+      // scarf around the neck, striped
+      if (h > 0.545f && h < 0.615f) c = (xmFrac(a / HW_TAU * 10.0f) < 0.6f) ? hwColor(hat, 0.9f) : hwColor(hwMix(hat, WHITE, 0.7f), 0.85f);
+      // scarf tail hanging down the side, fluttering in the wind
+      if (h < 0.58f && h > 0.34f) {
+        const float ta = tailA + 0.1f * sin_approx(tt * flutter + h * 15.0f);
+        if (fabsf(hwAngDiff(a, ta)) * rr < 0.032f) c = (xmFrac(h * 14.0f) < 0.6f) ? hwColor(hat, 0.9f) : hwColor(hwMix(hat, WHITE, 0.7f), 0.85f);
+      }
+    } else if (h < 0.9f) {  // beanie cuff
+      c = hwColor(hwMix(hat, WHITE, 0.25f), 0.85f * (0.8f + 0.2f * cos_approx(a * 16.0f)));
+    } else if (h < 0.965f) {  // beanie crown, knit ribs
+      c = hwColor(hat, 0.62f + 0.3f * (0.5f + 0.5f * cos_approx(a * 12.0f)));
+    } else {  // pom-pom
+      c = hwColor(snow, 0.8f + 0.2f * hwNoise(i * 0.7f, tt * 2.0f));
+    }
+    if (glitter > 0.0f && h < 0.86f) {
+      const float g = xmTwinkle(i, tt, glitter, 41);
+      if (g > 0.0f) c = color_add(c, hwColor(hwMix(snow, 0x80C0FF, 0.3f), g * 0.5f));
     }
     SEGMENT.setPixelColor(i, c);
   }
 
-  // coal eyes, carrot nose, coal buttons
-  if (g[3] > 0.0f && fade > 0.05f) {
-    const float k3 = g[3] * fade;
-    const float he = bc[2] + br[2] * 0.3f;
-    const float ea = xmArcToAng(br[2] * 0.42f, he);
-    SEGMENT.setPixelColor(xmNearest(len, N, he, A0 - ea), BLACK);
-    SEGMENT.setPixelColor(xmNearest(len, N, he, A0 + ea), BLACK);
-    const int ni = xmNearest(len, N, bc[2] - br[2] * 0.1f, A0);
-    SEGMENT.setPixelColor(ni, hwColor(nose, k3));
-    for (int b = -1; b <= 1; b++) SEGMENT.setPixelColor(xmNearest(len, N, bc[1] + b * br[1] * 0.45f, A0), BLACK);
-    SEGMENT.setPixelColor(xmNearest(len, N, bc[0] + br[0] * 0.35f, A0), BLACK);
-    if (SEGMENT.check2) {  // stick arms, the right one waves
-      const uint32_t stick = 0x6A3410;
-      const float ha = bc[1] + br[1] * 0.2f;
-      for (int side = -1; side <= 1; side += 2) {
-        const float wave = (side > 0) ? 0.5f + 0.5f * sin_approx(tt * 5.0f) : 0.2f;
-        for (int j = 1; j <= 3; j++) {
-          const float hh = ha + j * (0.25f + wave * 0.6f) / N * 0.6f;
-          const float aa = A0 + side * xmArcToAng(br[1] * 1.0f + j * 0.025f, hh);
-          hwBlob(len, N, hh, aa, 0.35f / N, 0.012f, stick, k3 * 1.2f);
-        }
-      }
+  // coal eyes (two pixels each); a blink turns them to snow for a moment
+  const float ea = xmArcToAng(0.065f * fs, eyeRow);
+  if (!blinking) {
+    for (int sd = -1; sd <= 1; sd += 2) {
+      const int p = xmPix(eyeRow, sd * ea, len, N);
+      SEGMENT.setPixelColor(p, BLACK); SEGMENT.setPixelColor(p + 1, BLACK);
     }
   }
-
-  // falling snow: heavy while it piles up, lighter afterwards
-  const int count = (SEGMENT.intensity * 48 + 127) / 255;
-  const float heavy = (st->phase == 0) ? 1.0f : 0.55f;
-  for (int k = 0; k < count; k++) {
-    XmFlake& f = st->f[k];
-    f.h -= f.v * dts * (0.6f + 0.4f * pace); f.ph += dts * 1.7f;
-    if (f.h < st->pile) { f.h = 1.0f + hwRand() * 0.1f; f.a = hwRand() * HW_TAU; f.v = 0.04f + hwRand() * 0.05f; }
-    if ((k & 1) && heavy < 1.0f) continue;
-    hwBlob(len, N, f.h, f.a + 0.2f * sin_approx(f.ph), 0.42f / N, 0.016f, snow, 0.8f);
+  // carrot nose pointing sideways, fading to a tip
+  const int np = xmPix(noseRow, 0.0f, len, N);
+  const float ppw = 2.0f * (1.0f - noseRow) * (len - 1) / N;            // pixels in one wrap at nose height
+  const int nl = max(2, (int)(0.11f * fs / (HW_TAU * (HW_RAD * (1.0f - noseRow) + 0.012f)) * ppw));
+  for (int j = 0; j <= nl; j++) SEGMENT.setPixelColor(np + j, hwColor(carrot, 1.0f - 0.65f * j / nl));
+  // coal smile
+  for (int k = -2; k <= 2; k++) {
+    const float hk = mouthRow + (k * k) * 0.06f / N;
+    SEGMENT.setPixelColor(xmPix(hk, xmArcToAng(k * 0.035f * fs, hk), len, N), BLACK);
+  }
+  // coal buttons down the front: every row on the middle ball, every other row on the bottom ball
+  for (float hb = xmRowAt(0.05f, A0, N); hb < 0.54f; hb += 1.0f / N) {
+    if (hb < 0.03f) continue;
+    if (hb < 0.36f && ((int)(hb * N + 0.5f) & 1)) continue;
+    const int p = xmPix(hb, 0.0f, len, N);
+    SEGMENT.setPixelColor(p, BLACK); SEGMENT.setPixelColor(p + 1, BLACK);
+  }
+  // stick arms out the sides of the middle ball; the right one waves
+  for (int sd = -1; sd <= 1; sd += 2) {
+    const float wave = (sd > 0 && SEGMENT.check2) ? 0.5f + 0.5f * sin_approx(tt * 4.0f) : 0.3f;
+    for (int j = 0; j < 7; j++) {
+      const float hh = 0.45f + j * (0.012f + wave * 0.014f);
+      const float aa = sd * (1.45f + j * 0.07f);
+      SEGMENT.setPixelColor(xmPix(xmRowAt(hh, A0 + aa, N), aa, len, N) , stick);
+    }
   }
 }
-static const char _data_FX_MODE_XMAS_SNOWMAN[] PROGMEM = "Christmas Snowman@Pace,Snowfall,Snowman size,Hold time,Tree wraps,Melt & repeat,Arms,Turn;Snow,Nose,Scarf & hat;;1;sx=110,ix=120,c1=128,c2=110,c3=12,o1=1,o2=1,o3=0";
+static const char _data_FX_MODE_XMAS_SNOWMAN[] PROGMEM = "Christmas Snowman@Turn speed,Glitter,Face size,Scarf flutter,Tree wraps,Turn,Blink & wave,Glitter;Snow,Carrot,Scarf & hat;;1;sx=60,ix=120,c1=128,c2=110,c3=12,o1=1,o2=1,o3=1";
 
 /*
- * Christmas Santa Sleigh: Santa's sleigh and a line of reindeer (Rudolph's nose in front) spiral up
- * around the tree leaving a twinkling stardust trail. At the top: ho ho ho (three flashes), the sleigh
- * flies off and presents drop straight down to land under the tree. Then it starts over.
+ * Christmas Santa: the whole tree becomes Santa. Fur hem at the bottom, red velvet coat with a fur
+ * strip down the front, black belt with a gold buckle, a big fluffy beard and mustache, rosy face with
+ * twinkling eyes and red nose, fur hat band, red hat and pom-pom on the tip. Every so often he laughs:
+ * three "ho"s that jiggle his belly and send rings of light up and down the tree.
  */
-struct XmGift { float h, a, v; uint8_t c; };
-struct XmSanta { uint32_t last; float tt, pt, prog, sa; uint8_t phase, ng; XmGift g[12]; };
+struct XmSanta { uint32_t last; float tt, turn, laughT, nextLaugh; };
 
 void mode_xmas_santa(void) {
   const uint16_t len = SEGLEN;
-  if (len < 12 || !SEGENV.allocateData(sizeof(XmSanta) + len)) { mode_static(); return; }
+  if (len < 50 || !SEGENV.allocateData(sizeof(XmSanta))) { mode_static(); return; }
   XmSanta* st = reinterpret_cast<XmSanta*>(SEGENV.data);
-  uint8_t* trail = SEGENV.data + sizeof(XmSanta);
-  if (SEGENV.call == 0) { memset(SEGENV.data, 0, sizeof(XmSanta) + len); st->last = strip.now; st->sa = hwRand() * HW_TAU; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmSanta)); st->last = strip.now; st->laughT = -100.0f; st->nextLaugh = 4.0f; }
+  // own clock (not wrapped by hwFrame) because laugh times are stored relative to it
+  uint32_t dms = strip.now - st->last; if (dms > 60) dms = 60; st->last = strip.now;
+  const float dts = dms * 0.001f;
+  st->tt += dts;
+  if (st->tt > 20000.0f) { st->tt -= 20000.0f; st->laughT -= 20000.0f; st->nextLaugh -= 20000.0f; }
+  const float tt = st->tt;
   const float N = hwWraps();
-  const uint32_t sleigh = SEGCOLOR(0), deer = xmOr(SEGCOLOR(1), 0x8A3A0A), dust = xmOr(SEGCOLOR(2), 0xFFB020);
-  const uint32_t giftCols[4] = { sleigh, dust, 0x00C020, WHITE };
+  const uint32_t suit = xmOr(SEGCOLOR(0), RED), fur = xmOr(SEGCOLOR(1), WHITE), skin = xmOr(SEGCOLOR(2), 0xFF9060);
+  const uint32_t gold = 0xFFB000, rosy = 0xFF3030;
 
-  const float TURNS = 3.0f;
-  const float w = 0.6f + SEGMENT.speed / 255.0f * 2.2f;  // rad/s around the tree
-  const float slope = 0.92f / (TURNS * HW_TAU);            // height gained per radian
-  st->pt += dts;
-  float sh;
-  if (st->phase == 0) {
-    st->sa += w * dts; st->prog += w * dts / (TURNS * HW_TAU);
-    sh = 0.04f + 0.92f * st->prog;
-    if (st->prog >= 1.0f) {
-      st->phase = 1; st->pt = 0.0f;
-      st->ng = (SEGMENT.custom2 * 12 + 127) / 255;
-      for (int k = 0; k < st->ng; k++) { st->g[k].h = 0.93f + hwRand() * 0.04f; st->g[k].a = hwRand() * HW_TAU; st->g[k].v = -0.05f * hwRand(); st->g[k].c = hw_random8(4); }
-    }
-  } else {
-    st->sa += w * dts * 0.8f;
-    sh = 0.96f + st->pt * 0.05f;  // keeps climbing out of the top
-    if (st->phase == 1 && st->pt > 2.4f) { st->phase = 2; st->pt = 0.0f; }
-    if (st->phase == 2 && st->pt > 6.0f) { st->phase = 0; st->pt = 0.0f; st->prog = 0.0f; st->ng = 0; }
-  }
-  if (st->sa > 1000.0f) st->sa = fmodf(st->sa, HW_TAU);
-  const float vis = (st->phase == 0) ? hwSmooth(st->prog / 0.04f) : 1.0f - hwSmooth((sh - 0.97f) / 0.07f);
+  if (SEGMENT.check2) { st->turn += dts * (0.05f + SEGMENT.speed / 255.0f * 0.6f); if (st->turn > HW_TAU) st->turn -= HW_TAU; }
+  const float A0 = st->turn;
+  if (SEGMENT.check1 && tt >= st->nextLaugh) { st->laughT = tt; st->nextLaugh = tt + 8.0f + (255 - SEGMENT.intensity) / 255.0f * 22.0f; }
+  const float lt = tt - st->laughT;
+  float jig = 0.0f;
+  for (int k = 0; k < 3; k++) { const float x = (lt - k * 0.7f) / 0.18f; jig += hwGauss(x * x); }
+  const float wob = 0.02f * jig * sin_approx(tt * 26.0f);
+  const float fluff = SEGMENT.custom1 / 255.0f, bells = SEGMENT.custom2 / 255.0f;
+  const float eyeRow = xmRowAt(0.775f, A0, N);
+  const float beltH = 0.395f + wob;
 
-  // background: faint twinkling stars
   for (int i = 0; i < len; i++) {
-    uint32_t c = BLACK;
-    if (SEGMENT.check3) {
-      const float r = hwHash2(i, 11);
-      if (r > 0.965f) c = hwColor(WHITE, 0.08f + 0.1f * (0.5f + 0.5f * sin_approx(tt * (0.7f + r * 2.0f) + r * 50.0f)));
+    const float h = hwHeight(i, len), a = HW_TAU * N * h;
+    const float d = hwAngDiff(a, A0), rr = HW_RAD * (1.0f - h) + 0.012f, s = d * rr;
+    const float ca = cos_approx(a), sa = sin_approx(a);
+    const float front = 0.85f + 0.15f * cos_approx(d);
+    const float furN = 1.0f - fluff * 0.35f * (1.0f - hwNoise(ca * 4.0f + tt * 0.25f, h * 26.0f + sa * 4.0f));
+    const uint32_t furC = hwColor(fur, 0.8f * furN);
+    const uint32_t velvet = hwColor(suit, (0.6f + 0.3f * hwNoise(ca * 2.0f + 9.0f, h * 9.0f + sa * 2.0f)) * front);
+    const bool frontHalf = fabsf(d) < 1.25f;
+    const float beardLow = 0.50f + 0.06f * (s / 0.18f) * (s / 0.18f) + 0.012f * cos_approx(s * 60.0f) + wob * 0.5f;
+    uint32_t c;
+    bool onSuit = false;
+    if (h < 0.07f + wob * 0.3f) c = furC;                                    // fur hem
+    else if (fabsf(h - beltH) < 0.035f) {                                    // belt and buckle
+      c = BLACK;
+      const float as = fabsf(s);
+      if (as < 0.05f && as > 0.02f) c = hwColor(gold, 0.9f + 0.3f * jig);
+    } else if (h < 0.72f && !(frontHalf && h > beardLow) && !(!frontHalf && h > 0.56f)) {  // coat
+      c = velvet; onSuit = true;
+      if (fabsf(s) < 0.022f && h < 0.56f) { c = furC; onSuit = false; }      // fur strip down the front
+    } else if (h < 0.72f) c = furC;                                          // beard (front) / hair (back)
+    else if (h < 0.80f) {                                                    // face (front), hair (back)
+      if (frontHalf && fabsf(s) < 0.13f) {
+        c = hwColor(skin, 0.75f);
+        const float dh = (h - (eyeRow - 0.55f / N)) * N * 1.6f;              // rosy cheeks
+        for (int sd = -1; sd <= 1; sd += 2) { const float ds = (s - sd * 0.085f) / 0.03f; const float v = hwGauss(dh * dh + ds * ds); if (v > 0.05f) c = hwMix(c, rosy, v * 0.7f); }
+      } else c = furC;
+      if (frontHalf && h < 0.735f && fabsf(s) < 0.1f) c = furC;              // mustache
     }
-    if (trail[i]) {
-      const float tv = trail[i] / 255.0f;
-      const float tw = 0.45f + 0.55f * hwHash2(i, (int32_t)(tt * 14.0f));
-      c = color_add(c, hwColor(dust, tv * tv * tw));
+    else if (h < 0.85f) c = furC;                                            // hat band
+    else if (h < 0.965f) { c = hwColor(suit, 0.55f + 0.3f * (0.5f + 0.5f * cos_approx(d * 2.0f + 1.0f))); onSuit = true; }  // hat
+    else c = hwColor(fur, 0.85f + 0.15f * jig);                              // pom-pom
+    if (onSuit && bells > 0.0f) {                                            // sleigh-bell sparkles
+      const float g = xmTwinkle(i, tt, bells, 57);
+      if (g > 0.0f) c = color_add(c, hwColor(gold, g * 0.8f));
+    }
+    // each "ho" sends a ring of light up and down from the belly
+    for (int k = 0; k < 3; k++) {
+      const float t = lt - k * 0.7f;
+      if (t < 0.0f || t > 1.6f) continue;
+      const float dd = (fabsf(h - 0.40f) - t * 0.55f) / 0.04f;
+      if (fabsf(dd) < 3.0f) c = color_add(c, hwColor(fur, 0.45f * hwGauss(dd * dd) * (1.0f - t / 1.6f)));
     }
     SEGMENT.setPixelColor(i, c);
   }
-  // stardust trail decays; length set by c1
-  const float life = 0.4f + SEGMENT.custom1 / 255.0f * 3.2f;
-  const uint8_t cool = (uint8_t)min(255.0f, dts / life * 255.0f + 1.0f);
-  for (int i = 0; i < len; i++) trail[i] = trail[i] > cool ? trail[i] - cool : 0;
-
-  // ho ho ho: three soft flashes over the whole tree
-  if (st->phase == 1 && SEGMENT.check2) {
-    float fl = 0.0f;
-    for (int k = 0; k < 3; k++) { const float x = (st->pt - 0.25f - k * 0.55f) / 0.12f; fl += hwGauss(x * x); }
-    if (fl > 0.01f) for (int i = 0; i < len; i++) SEGMENT.addPixelColor(i, hwColor(hwMix(sleigh, WHITE, 0.5f), fl * 0.45f));
+  // eyes, red nose
+  const float ea = xmArcToAng(0.045f, eyeRow);
+  for (int sd = -1; sd <= 1; sd += 2) {
+    const int p = xmPix(eyeRow, sd * ea, len, N);
+    const bool squint = jig > 0.3f;   // laughing: eyes squeeze shut
+    const float tw = SEGMENT.check3 ? xmTwinkle(sd + 7, tt * 0.35f, 0.6f, 3) : 0.0f;
+    SEGMENT.setPixelColor(p, squint ? hwColor(skin, 0.35f) : (tw > 0.2f ? hwColor(WHITE, tw) : BLACK));
   }
-
-  // sleigh, reindeer, Rudolph
-  if (vis > 0.01f && st->phase < 2) {
-    const int idx = xmNearest(len, N, sh, st->sa);
-    trail[idx] = 255;
-    if (idx > 0) trail[idx - 1] = max(trail[idx - 1], (uint8_t)200);
-    if (idx < len - 1) trail[idx + 1] = max(trail[idx + 1], (uint8_t)200);
-    const float lift = (st->phase == 0) ? slope : 0.008f;
-    hwBlob(len, N, sh, st->sa, 0.6f / N, 0.042f, sleigh, vis * 1.1f);
-    hwBlob(len, N, sh + 0.35f / N, st->sa - xmArcToAng(0.01f, sh), 0.3f / N, 0.016f, WHITE, vis * 0.5f);  // Santa's white trim
-    const int nd = 2 + (SEGMENT.intensity * 6 + 127) / 255;
-    float da = 0.0f;
-    for (int k = 0; k < nd; k++) {
-      da += xmArcToAng(0.05f, sh);
-      const float hh = sh + da * lift * 1.0f + 0.25f / N * sin_approx(tt * 9.0f + k * 1.3f);
-      hwBlob(len, N, hh, st->sa + da, 0.42f / N, 0.017f, deer, vis);
-      if (k == nd - 1 && SEGMENT.check1) {
-        const float na = st->sa + da + xmArcToAng(0.03f, hh);
-        hwBlob(len, N, hh, na, 0.3f / N, 0.01f, RED, vis * (1.1f + 0.4f * sin_approx(tt * 6.0f)));
-      }
-    }
-  }
-
-  // presents fall straight down and land under the tree
-  for (int k = 0; k < st->ng; k++) {
-    XmGift& gf = st->g[k];
-    if (gf.h > 0.035f) { gf.v += 0.9f * dts; gf.h -= gf.v * dts; if (gf.h < 0.035f) gf.h = 0.035f; }
-    const float fadeOut = (st->phase == 2 && st->pt > 5.0f) ? 1.0f - (st->pt - 5.0f) : 1.0f;
-    hwBlob(len, N, gf.h, gf.a, 0.45f / N, 0.028f, giftCols[gf.c], fadeOut);
-  }
+  const int np = xmPix(eyeRow - 0.7f / N, 0.0f, len, N);
+  SEGMENT.setPixelColor(np, hwColor(rosy, 1.0f)); SEGMENT.setPixelColor(np + 1, hwColor(rosy, 0.8f));
 }
-static const char _data_FX_MODE_XMAS_SANTA[] PROGMEM = "Christmas Santa Sleigh@Flight speed,Reindeer,Stardust trail,Gifts,Tree wraps,Rudolph,Ho ho ho,Starry sky;Sleigh,Reindeer,Stardust;;1;sx=110,ix=150,c1=150,c2=150,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_XMAS_SANTA[] PROGMEM = "Christmas Santa@Turn speed,Laugh rate,Fur fluff,Bell sparkles,Tree wraps,Ho ho ho,Turn,Twinkle eyes;Suit,Fur & beard,Face;;1;sx=60,ix=120,c1=140,c2=100,c3=12,o1=1,o2=1,o3=1";
 
 /*
- * Christmas Star Topper: a glowing star at the very top throws beams of light straight down the tree.
- * The beams converge at the star like real rays, turn slowly, and carry pulses of light downward.
- * Optional shooting stars cross the tree, twinkles sparkle everywhere, and the star can breathe.
+ * Christmas Plaid Gift: the tree is a present wrapped in tartan paper (a real woven sett, warp and weft
+ * crossing, with a twill texture), tied with a shiny ribbon down two sides and around the middle and a bow
+ * on top. Optional glossy shimmer and an unwrap cycle: the paper peels off the tree along the strand,
+ * revealing a glowing gift inside, then wraps back up.
  */
-struct XmStar { uint32_t last, nextShoot; float tt, rot, shootT, shootA, shootH; };
+struct XmPlaid { uint32_t last; float tt, slide; };
 
-void mode_xmas_star(void) {
+// one thread color across the tartan sett at position x (0..1)
+static uint32_t xmSett(float x, uint32_t p1, uint32_t p2) {
+  if (x < 0.40f) return p1;
+  if (x < 0.45f) return hwColor(p2, 0.25f);
+  if (x < 0.70f) return p2;
+  if (x < 0.74f) return hwColor(p2, 0.25f);
+  if (x < 0.80f) return p1;
+  if (x < 0.83f) return 0xC8C8B0;
+  return p1;
+}
+
+void mode_xmas_plaid(void) {
   const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XmStar))) { mode_static(); return; }
-  XmStar* st = reinterpret_cast<XmStar*>(SEGENV.data);
-  const uint32_t now = strip.now;
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmStar)); st->last = now; st->nextShoot = now + 3000; st->shootT = 99.0f; }
+  if (len < 2 || !SEGENV.allocateData(sizeof(XmPlaid))) { mode_static(); return; }
+  XmPlaid* st = reinterpret_cast<XmPlaid*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmPlaid)); st->last = strip.now; }
   const float dts = hwFrame(st->last, st->tt), tt = st->tt;
   const float N = hwWraps();
-  const uint32_t star = SEGCOLOR(0), ray = xmOr(SEGCOLOR(1), star), halo = SEGCOLOR(2);
+  const uint32_t p1 = SEGCOLOR(0), p2 = xmOr(SEGCOLOR(1), 0x006020), ribbon = xmOr(SEGCOLOR(2), 0xFFC040);
 
-  st->rot += dts * SEGMENT.speed / 255.0f * 0.5f; if (st->rot > HW_TAU) st->rot -= HW_TAU;
-  const float R = (float)(3 + (SEGMENT.intensity * 13 + 127) / 255);
-  const float wid = 0.012f + SEGMENT.custom1 / 255.0f * 0.05f;
-  const float size = 0.04f + SEGMENT.custom2 / 255.0f * 0.12f;
-  const float breathe = SEGMENT.check3 ? 0.8f + 0.2f * sin_approx(tt * 1.3f) : 1.0f;
-  const float vs = 0.25f + SEGMENT.speed / 255.0f * 0.5f;
+  st->slide += dts * SEGMENT.speed / 255.0f * 0.3f; if (st->slide > 1000.0f) st->slide -= 1000.0f;
+  const float M = (float)(4 + (SEGMENT.intensity * 12 + 127) / 255);   // checks around the tree
+  const float V = 3.0f + SEGMENT.custom1 / 255.0f * 10.0f;             // checks up the tree
+  const float wr = 0.02f + SEGMENT.custom2 / 255.0f * 0.05f;           // ribbon half width
+  const float A0 = 0.0f;
+
+  // unwrap cycle: 20 s wrapped, 4 s peel off from the top along the strand, 3 s open, 3 s wrap back up
+  float peel = (float)len + 10.0f;
+  if (SEGMENT.check1) {
+    const float c = fmodf(tt, 30.0f);
+    if (c >= 20.0f && c < 24.0f) peel = len * (1.0f - (c - 20.0f) / 4.0f);
+    else if (c >= 24.0f && c < 27.0f) peel = -10.0f;
+    else if (c >= 27.0f) peel = len * ((c - 27.0f) / 3.0f);
+  }
 
   for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), a = HW_TAU * N * h, dTop = 1.0f - h;
-    // beams
-    const float x = (a - st->rot) * R / HW_TAU;
-    const float xr = floorf(x + 0.5f);
-    const float arc = fabsf(x - xr) * HW_TAU / R * (HW_RAD * dTop + 0.012f) / wid;
-    float v = 0.0f;
-    if (arc < 2.5f) {
-      const int ri = ((int)xr % (int)R + (int)R) % (int)R;
-      const float pp = xmFrac(h * 1.5f + tt * vs + hwHash2(ri, 5));
-      const float p2 = pp * pp, p4 = p2 * p2;
-      v = hwGauss(arc * arc) * (0.3f + 0.9f * p4 * p4) * (0.3f + 0.7f * h);
-    }
-    uint32_t c = hwColor(ray, v * breathe);
-    // halo glow around the top of the tree
-    if (halo != BLACK) { const float dh = dTop / 0.35f; c = color_add(c, hwColor(halo, 0.05f + 0.35f * hwGauss(dh * dh))); }
-    // the star itself, with a shimmering crown
-    if (dTop < size * 1.6f) {
-      const float core = hwSmooth(1.0f - dTop / size);
-      const float shimmer = 0.75f + 0.25f * sin_approx(tt * 7.0f + i * 1.7f);
-      c = color_add(c, hwColor(hwMix(star, WHITE, core * 0.35f), (core * 1.2f + 0.15f * hwSmooth(1.6f - dTop / size)) * shimmer * breathe));
-    }
-    if (SEGMENT.check2) {  // twinkles
-      const float r = hwHash2(i, (int32_t)(tt * 0.8f + hwHash2(i, 3) * 8.0f));
-      if (r > 0.985f) c = color_add(c, hwColor(star, 0.5f * sin_approx(xmFrac(tt * 0.8f + hwHash2(i, 3) * 8.0f) * 3.14159f)));
+    const float h = hwHeight(i, len), a = HW_TAU * N * h;
+    uint32_t c;
+    if ((float)i > peel + 6.0f) {  // the gift inside: warm glow with dense sparkles
+      c = hwColor(ribbon, 0.25f + 0.15f * hwNoise(i * 0.05f, tt));
+      const float g = xmTwinkle(i, tt * 2.0f, 1.0f, 77);
+      if (g > 0.0f) c = color_add(c, hwColor(WHITE, g * 0.9f));
+    } else {
+      const float u = xmFrac(a / HW_TAU * M + st->slide), v = xmFrac(h * V);
+      const uint32_t warp = xmSett(u, p1, p2), weft = xmSett(v, p1, p2);
+      c = hwColor(hwMix(warp, weft, (i & 1) ? 0.35f : 0.65f), 0.7f);  // twill: threads alternate on top
+      if (SEGMENT.check2) {  // glossy highlight sweeping across the paper
+        const float g = (xmFrac(a / HW_TAU - h * 0.8f - tt * 0.12f) - 0.5f) / 0.05f;
+        c = color_add(c, hwColor(WHITE, 0.35f * hwGauss(g * g)));
+      }
+      // ribbon down the front and back and around the middle, bow on top
+      const float rr = HW_RAD * (1.0f - h) + 0.012f;
+      const float sd = min(fabsf(hwAngDiff(a, A0)), fabsf(hwAngDiff(a, A0 + 3.14159f))) * rr;
+      float rb = max(hwSmooth((wr - sd) / 0.01f), hwSmooth((wr * 0.9f - fabsf(h - 0.40f)) / 0.01f));
+      if (h > 0.9f) rb = 1.0f;
+      if (rb > 0.0f) {
+        float sheen = 0.65f + 0.35f * sin_approx(h * 20.0f - tt * 2.0f + sd * 40.0f);
+        if (h > 0.9f) sheen = (h > 0.97f) ? 1.0f : 0.5f + 0.5f * fabsf(sin_approx(2.0f * a));  // bow loops and knot
+        uint32_t rc = hwColor(ribbon, sheen);
+        if (SEGMENT.check3) { const float g = xmTwinkle(i, tt, 0.8f, 91); if (g > 0.0f) rc = color_add(rc, hwColor(WHITE, g)); }
+        c = hwMix(c, rc, rb);
+      }
+      const float edge = (float)i - peel;
+      if (edge > -6.0f) c = hwMix(c, WHITE, 1.0f - fabsf(edge) / 6.0f);  // the peeling edge
     }
     SEGMENT.setPixelColor(i, c);
   }
-
-  // shooting star: a short comet that streaks across the tree and down
-  if (SEGMENT.check1) {
-    if ((int32_t)(now - st->nextShoot) >= 0) {
-      st->shootT = 0.0f; st->shootA = hwRand() * HW_TAU; st->shootH = 0.7f + hwRand() * 0.2f;
-      st->nextShoot = now + 6000 + hw_random16(8000);
-    }
-    if (st->shootT < 1.3f) {
-      st->shootT += dts;
-      for (int k = 6; k >= 0; k--) {
-        const float t = st->shootT - k * 0.035f;
-        if (t < 0.0f || t > 1.2f) continue;
-        const float hh = st->shootH - t * 0.4f, aa = st->shootA + t * 2.2f;
-        const float kk = (k == 0 ? 1.1f : 0.6f * (1.0f - k / 7.0f)) * (1.0f - hwSmooth((t - 0.9f) / 0.3f));
-        hwBlob(len, N, hh, aa, 0.4f / N, 0.018f, WHITE, kk);
-      }
-    }
-  }
 }
-static const char _data_FX_MODE_XMAS_STAR[] PROGMEM = "Christmas Star Topper@Spin speed,Rays,Ray width,Star size,Tree wraps,Shooting stars,Twinkles,Breathe;Star,Rays,Halo;;1;sx=60,ix=100,c1=90,c2=110,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_XMAS_PLAID[] PROGMEM = "Christmas Plaid Gift@Slide speed,Checks around,Check height,Ribbon width,Tree wraps,Unwrap,Shimmer,Bow sparkle;Plaid 1,Plaid 2,Ribbon;;1;sx=40,ix=100,c1=110,c2=110,c3=12,o1=1,o2=1,o3=1";
 
-/*
- * Christmas Garland: tiers of draped garland swag around the tree (real curves that sag between anchor
- * points), with ornaments hanging at the low point of each swag, bows at the anchors, tinsel sparkle
- * and little lights chasing along the garland. Fewer swags near the narrow top, like a real tree.
- */
 struct XmClock { uint32_t last; float tt; };
 
-void mode_xmas_garland(void) {
+/*
+ * Christmas Dressed Tree: the lights become a fully decorated tree. Glowing needles with a gentle breeze
+ * shimmer, warm fairy lights twinkling throughout, a tinsel garland spiraling down at its own slant,
+ * glossy ornaments with a moving highlight, a glowing star on top, and a soft wave of light that rolls
+ * up the tree now and then.
+ */
+void mode_xmas_dressed(void) {
   const uint16_t len = SEGLEN;
   if (len < 2 || !SEGENV.allocateData(sizeof(XmClock))) { mode_static(); return; }
   XmClock* st = reinterpret_cast<XmClock*>(SEGENV.data);
@@ -12133,173 +12125,184 @@ void mode_xmas_garland(void) {
   hwFrame(st->last, st->tt);
   const float tt = st->tt;
   const float N = hwWraps();
-  const uint32_t garland = SEGCOLOR(0), orn1 = xmOr(SEGCOLOR(1), RED), orn2 = xmOr(SEGCOLOR(2), 0xFFB000);
-  const uint32_t bead = hwMix(garland, WHITE, 0.6f);
-
-  const int L = 2 + (SEGMENT.intensity * 4 + 127) / 255;
-  const float S0 = 3.0f + SEGMENT.custom1 / 255.0f * 7.0f;
-  const float sag = max(1.25f / N, 0.3f / L), th = 0.5f / N;
-  const float glow = SEGMENT.custom2 / 255.0f;
-  const float spd = 0.3f + SEGMENT.speed / 255.0f * 3.0f;
-  float hA[6]; int sw[6];
-  for (int k = 0; k < L; k++) {
-    hA[k] = 0.25f + (L > 1 ? k * 0.62f / (L - 1) : 0.3f);
-    sw[k] = max(2, (int)(S0 * (1.0f - hA[k]) * 1.4f + 0.5f));
-  }
+  const uint32_t tinsel = SEGCOLOR(0), orn1 = xmOr(SEGCOLOR(1), RED), orn2 = xmOr(SEGCOLOR(2), 0x2050FF);
+  const uint32_t needle = 0x0B5A18, warm = 0xFFB060;
+  const float spd = 0.3f + SEGMENT.speed / 255.0f * 2.0f;
+  const float glow = 0.25f + SEGMENT.custom1 / 255.0f * 0.75f;
+  const float G = 4.0f, wt = (0.3f + SEGMENT.custom2 / 255.0f * 0.5f) / N;
+  const float wave = fmodf(tt * spd * 0.12f, 1.6f) - 0.2f;   // rolling light wave position
 
   for (int i = 0; i < len; i++) {
     const float h = hwHeight(i, len), a = HW_TAU * N * h;
-    uint32_t c = hwColor(garland, glow * 0.12f);
-    for (int k = 0; k < L; k++) {
-      if (h > hA[k] + 2.5f * th || h < hA[k] - sag - 2.5f * th) continue;
-      const float fr = xmFrac(a / HW_TAU * sw[k] + 0.37f * k);
-      const float hs = hA[k] - sag * sin_approx(3.14159f * fr);
-      const float d = (h - hs) / th;
-      if (fabsf(d) > 2.5f) continue;
-      const float gv = hwGauss(d * d);
-      uint32_t gc = hwColor(garland, gv * 0.75f);
-      if (SEGMENT.check2) {
-        const float b = 0.5f + 0.5f * cos_approx(HW_TAU * (fr * 5.0f - tt * spd));
-        const float b2 = b * b, b4 = b2 * b2;
-        gc = color_add(gc, hwColor(bead, gv * b4 * b4 * 0.9f));
+    const float ca = cos_approx(a), sa = sin_approx(a);
+    const float n = hwNoise(ca * 3.0f + tt * 0.15f, h * 14.0f + sa * 3.0f);
+    const float dw = (h - wave) / 0.08f;
+    const float lift = 1.0f + 0.5f * hwGauss(dw * dw);
+    uint32_t c = hwColor(needle, glow * (0.35f + 0.65f * n) * lift);
+    if (SEGMENT.check2 && hwHash2(i, 21) > 0.86f) {  // warm fairy lights
+      const float r = hwHash2(i, 22);
+      c = color_add(c, hwColor(warm, (0.55f + 0.45f * sin_approx(tt * (0.8f + 2.0f * r) * spd + r * 40.0f)) * lift));
+    }
+    if (SEGMENT.check1) {  // tinsel garland spiral
+      const float f = xmFrac(a / HW_TAU - h * G), du = min(f, 1.0f - f) / G / wt;
+      if (du < 2.5f) {
+        const float gv = hwGauss(du * du);
+        const float sh = 0.55f + 0.45f * hwHash2(i, (int32_t)(tt * 14.0f)) + 0.4f * powf(0.5f + 0.5f * sin_approx(a * 3.0f - tt * spd * 3.0f), 6.0f);
+        c = hwMix(c, hwColor(tinsel, sh), gv);
       }
-      if (SEGMENT.check1 && hwHash2(i, (int32_t)(tt * 12.0f)) > 0.92f) gc = color_add(gc, hwColor(WHITE, gv * 0.7f));
-      c = color_add(c, gc);
+    }
+    if (SEGMENT.check3 && h > 0.9f) {  // star on top
+      const float k = hwSmooth((h - 0.9f) / 0.07f);
+      c = hwMix(c, hwColor(hwMix(tinsel, WHITE, 0.5f), 0.8f + 0.2f * sin_approx(tt * 3.0f)), k);
     }
     SEGMENT.setPixelColor(i, c);
   }
-  // ornaments at the low point of each swag, bows at the anchors
-  for (int k = 0; k < L; k++) {
-    for (int j = 0; j < sw[k]; j++) {
-      const float aLow = HW_TAU * ((j + 0.5f - 0.37f * k) / sw[k]);
-      const float hl = hA[k] - sag - 0.55f / N;
-      const float swing = xmArcToAng(0.01f, hl) * sin_approx(tt * 1.4f + j * 2.1f + k);
-      hwBlob(len, N, hl, aLow + swing, 0.5f / N, 0.03f, ((j + k) & 1) ? orn2 : orn1, 0.95f + 0.15f * sin_approx(tt * 2.0f + j));
-      if (SEGMENT.check3) hwBlob(len, N, hA[k], HW_TAU * ((j - 0.37f * k) / sw[k]), 0.4f / N, 0.022f, orn1, 1.0f);
-    }
+  // ornaments with a glossy highlight that slowly drifts as if the room light moves
+  const int K = 6 + (SEGMENT.intensity * 34 + 127) / 255;
+  const float hl = 0.012f + 0.008f * sin_approx(tt * 0.5f);
+  for (int k = 0; k < K; k++) {
+    const float hk = 1.0f - sqrtf(1.0f - hwHash2(k, 31) * 0.8f) - 0.02f;
+    if (hk < 0.04f) continue;
+    const float ak = HW_TAU * hwHash2(k, 32);
+    hwBlob(len, N, hk, ak, 0.55f / N, 0.035f, (k & 1) ? orn2 : orn1, 1.0f);
+    hwBlob(len, N, hk + 0.25f / N, ak - xmArcToAng(hl, hk), 0.3f / N, 0.01f, WHITE, 0.55f);
   }
 }
-static const char _data_FX_MODE_XMAS_GARLAND[] PROGMEM = "Christmas Garland@Bead speed,Tiers,Swags,Tree glow,Tree wraps,Tinsel sparkle,Chasing beads,Bows;Garland,Ornament 1,Ornament 2;;1;sx=90,ix=110,c1=100,c2=60,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_XMAS_DRESSED[] PROGMEM = "Christmas Dressed Tree@Shimmer speed,Ornaments,Needle glow,Tinsel width,Tree wraps,Tinsel garland,Twinkle lights,Star on top;Tinsel,Ornament 1,Ornament 2;;1;sx=90,ix=140,c1=150,c2=110,c3=12,o1=1,o2=1,o3=1";
 
 /*
- * Christmas Retro Bulbs: an old-fashioned string of big C9 bulbs in the classic colors, each bulb a bright
- * center with a soft glass glow around it. Some bulbs are flashers that blink on and off with a real
- * filament feel (they warm up and cool down through a deep orange). Optional warm white bulbs and one
- * faulty bulb that flickers like it's loose in its socket.
+ * Christmas Frost: under a deep night sky, frost crystals creep up the tree along branching veins, each
+ * pixel flashing as it freezes. Blizzard gusts sweep around the tree in white streaks, frozen pixels catch
+ * glints of light, and then it thaws from the top down with dripping sparkles before freezing again.
  */
-void mode_xmas_retro(void) {
+struct XmFrost { uint32_t last; float tt, F, pt; uint8_t phase; };
+
+void mode_xmas_frost(void) {
   const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XmClock))) { mode_static(); return; }
-  XmClock* st = reinterpret_cast<XmClock*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmClock)); st->last = strip.now; }
-  hwFrame(st->last, st->tt);
-  const float tt = st->tt;
-  static const uint32_t classic[5] = { 0xFF0000, 0x00C000, 0x0020FF, 0xFF6A00, 0xD00078 };
-  uint32_t cols[5]; uint8_t nc = 0;
-  if (SEGMENT.check2) { cols[nc++] = 0xFFA040; }
-  else if (SEGMENT.check1) { cols[nc++] = SEGCOLOR(0); if (SEGCOLOR(1) != BLACK) cols[nc++] = SEGCOLOR(1); if (SEGCOLOR(2) != BLACK) cols[nc++] = SEGCOLOR(2); }
-  else { for (int k = 0; k < 5; k++) cols[nc++] = classic[k]; }
-
-  const int P = 3 + (SEGMENT.custom1 * 17 + 127) / 255;
-  const float share = SEGMENT.intensity / 255.0f, rate = 0.4f + SEGMENT.speed / 255.0f * 1.6f;
-  const float glow = SEGMENT.custom2 / 255.0f;
-  const int nb = (len + P - 1) / P;
-  const int faulty = (int)(hwHash2(1, (int32_t)(tt / 40.0f)) * nb);
-  const uint32_t ember = 0xFF3000;
-
-  for (int i = 0; i < len; i++) {
-    const int b = i / P, center = b * P + P / 2;
-    const int d = abs(i - center);
-    float k = 1.0f;
-    if (hwHash2(b, 1) < share) {  // a flasher bulb
-      const float Tp = (2.5f + hwHash2(b, 2) * 6.0f) / rate, onT = Tp * (0.65f + 0.2f * hwHash2(b, 4));
-      const float t = fmodf(tt + hwHash2(b, 3) * Tp, Tp);
-      k = (t < onT) ? 1.0f - expf(-t / 0.12f) : expf(-(t - onT) / 0.18f);
-    } else {
-      k = 0.93f + 0.07f * hwNoise(tt * 3.0f, b * 1.7f);
-    }
-    if (SEGMENT.check3 && b == faulty && hwHash2(b, (int32_t)(tt * 18.0f)) < 0.45f) k *= 0.1f;
-    const uint32_t base = cols[b % nc];
-    const uint32_t col = hwMix(ember, base, sqrtf(hwClamp01(k)));  // filament glows orange while warming / cooling
-    const float shape = (d == 0) ? 1.0f : glow * 0.55f * expf(-(float)d / (0.4f + P * 0.12f));
-    SEGMENT.setPixelColor(i, hwColor(col, k * shape));
-  }
-}
-static const char _data_FX_MODE_XMAS_RETRO[] PROGMEM = "Christmas Retro Bulbs@Blink rate,Flasher bulbs,Bulb spacing,Glow,,My colors,Warm white,Faulty bulb;Bulb 1,Bulb 2,Bulb 3;;1;sx=90,ix=90,c1=60,c2=140,o3=1";
-
-/*
- * Christmas Snow Globe: the tree sits in a snow globe. Every so often it gets shaken: the snow is thrown up
- * and swirls around the tree, then slowly drifts back down and settles into a drift at the bottom, which
- * gets deeper as more flakes land. Without auto shake it's a gentle endless snowfall.
- */
-struct XmGF { float h, a, vh, va, ph; uint8_t landed; };
-struct XmGlobe { uint32_t last, nextShake, shakeT; float tt; XmGF f[64]; };
-
-void mode_xmas_snowglobe(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XmGlobe))) { mode_static(); return; }
-  XmGlobe* st = reinterpret_cast<XmGlobe*>(SEGENV.data);
-  const uint32_t now = strip.now;
-  if (SEGENV.call == 0) {
-    memset(st, 0, sizeof(XmGlobe)); st->last = now; st->nextShake = now; st->shakeT = now - 100000;
-    for (int k = 0; k < 64; k++) { st->f[k].h = hwRand(); st->f[k].a = hwRand() * HW_TAU; st->f[k].ph = hwRand() * HW_TAU; }
-  }
+  if (len < 2 || !SEGENV.allocateData(sizeof(XmFrost))) { mode_static(); return; }
+  XmFrost* st = reinterpret_cast<XmFrost*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmFrost)); st->last = strip.now; }
   const float dts = hwFrame(st->last, st->tt), tt = st->tt;
   const float N = hwWraps();
-  const uint32_t snow = SEGCOLOR(0), sparkle = xmOr(SEGCOLOR(1), WHITE), water = SEGCOLOR(2);
-  const int count = 8 + (SEGMENT.intensity * 56 + 127) / 255;
-  const float vt = 0.02f + SEGMENT.speed / 255.0f * 0.08f;
+  const uint32_t frost = SEGCOLOR(0), glint = xmOr(SEGCOLOR(1), WHITE), sky = xmOr(SEGCOLOR(2), 0x001040);
 
-  if (SEGMENT.check1 && (int32_t)(now - st->nextShake) >= 0) {
-    st->shakeT = now;
-    st->nextShake = now + (uint32_t)((15.0f + SEGMENT.custom2 / 255.0f * 75.0f) * 1000.0f);
-    for (int k = 0; k < 64; k++) {
-      XmGF& f = st->f[k];
-      if (f.landed) { f.landed = 0; f.h = 0.02f + hwRand() * 0.1f; }
-      f.vh = 0.5f + hwRand() * 0.9f;
-      f.va = (hwRand() < 0.5f ? -1.0f : 1.0f) * (2.0f + hwRand() * 3.0f);
-    }
-  }
-  const float shake = (now - st->shakeT) < 1600 ? 1.0f - (now - st->shakeT) / 1600.0f : 0.0f;
-
-  int landed = 0;
-  for (int k = 0; k < count; k++) if (st->f[k].landed) landed++;
-  const float pile = 0.012f + 0.1f * landed / (float)count;
+  // phases: 0 freeze, 1 hold, 2 thaw, 3 short pause
+  const float rate = 0.04f + SEGMENT.speed / 255.0f * 0.2f;
+  st->pt += dts;
+  if (st->phase == 0) { st->F += rate * dts; if (st->F >= 1.15f) { st->F = 1.15f; st->phase = 1; st->pt = 0.0f; } }
+  else if (st->phase == 1) { if (SEGMENT.check3 && st->pt > 3.0f + SEGMENT.custom2 / 255.0f * 37.0f) { st->phase = 2; st->pt = 0.0f; } }
+  else if (st->phase == 2) { st->F -= rate * 1.4f * dts; if (st->F <= -0.05f) { st->F = -0.05f; st->phase = 3; st->pt = 0.0f; } }
+  else if (st->pt > 2.0f) { st->phase = 0; st->pt = 0.0f; }
+  const float F = st->F;
+  const float det = 1.5f + SEGMENT.custom1 / 255.0f * 4.0f;
+  const float gust = SEGMENT.check1 ? SEGMENT.intensity / 255.0f : 0.0f;
+  const float wa = tt * 0.9f;
 
   for (int i = 0; i < len; i++) {
     const float h = hwHeight(i, len), a = HW_TAU * N * h;
-    uint32_t c = BLACK;
-    if (water != BLACK) {
-      const float n = hwNoise(cos_approx(a) * 1.5f + tt * 0.1f, h * 4.0f + sin_approx(a) * 1.5f - tt * 0.05f);
-      c = hwColor(water, 0.08f + 0.22f * n + 0.25f * shake);
+    const float ca = cos_approx(a), sa = sin_approx(a);
+    uint32_t c = hwColor(sky, 0.25f + 0.25f * hwNoise(ca * 1.2f + tt * 0.05f, h * 3.0f + sa * 1.2f));
+    const float rn = hwNoise(ca * det + 7.0f, h * det * 3.0f + sa * det);
+    const float ridge = 1.0f - fabsf(rn * 2.0f - 1.0f);
+    const float thr = 0.7f * h + 0.3f * (1.0f - ridge);  // veins (ridge crests) freeze first
+    const float e = F - thr;
+    if (e > 0.0f) {
+      const float r3 = ridge * ridge * ridge;
+      c = hwColor(frost, 0.35f + 0.5f * r3);
+      if (e < 0.04f && st->phase == 0) c = hwMix(c, glint, 1.0f - e / 0.04f);  // freezing front flashes
+      if (SEGMENT.check2) { const float g = xmTwinkle(i, tt, 0.6f, 13); if (g > 0.0f) c = color_add(c, hwColor(glint, g * 0.8f)); }
+    } else if (st->phase == 2 && e > -0.05f) {  // just thawed: a drop of meltwater
+      c = color_add(c, hwColor(hwMix(sky, WHITE, 0.6f), 0.5f * (1.0f + e / 0.05f)));
     }
-    const float edge = pile + 0.01f * (hwNoise(cos_approx(a) * 2.5f, sin_approx(a) * 2.5f + 3.0f) - 0.5f);
-    if (h < edge) c = hwColor(snow, 0.45f + 0.5f * hwSmooth(1.0f - (edge - h) / 0.025f));
+    if (gust > 0.0f) {  // blizzard streaks sweeping around the tree
+      const float ga = a - wa;
+      const float w = hwNoise(cos_approx(ga) * 2.0f + 3.0f, h * 10.0f + sin_approx(ga) * 2.0f + tt * 0.3f);
+      const float pulse = 0.5f + 0.5f * sin_approx(tt * 0.4f);
+      if (w > 0.58f) c = color_add(c, hwColor(WHITE, (w - 0.58f) * 2.4f * gust * pulse));
+    }
     SEGMENT.setPixelColor(i, c);
   }
+}
+static const char _data_FX_MODE_XMAS_FROST[] PROGMEM = "Christmas Frost@Freeze speed,Blizzard gusts,Crystal detail,Hold time,Tree wraps,Blizzard,Glints,Thaw & repeat;Frost,Glint,Night sky;;1;sx=80,ix=120,c1=120,c2=90,c3=12,o1=1,o2=1,o3=1";
 
-  const float size = 0.012f + SEGMENT.custom1 / 255.0f * 0.03f;
-  for (int k = 0; k < count; k++) {
-    XmGF& f = st->f[k];
-    if (f.landed) continue;
-    f.ph += dts * 1.5f;
-    f.vh += (-vt - f.vh) * min(1.0f, dts * 1.2f);
-    const float swirl = SEGMENT.check2 ? 0.25f : 0.0f;
-    f.va += ((swirl + 0.25f * sin_approx(f.ph)) - f.va) * min(1.0f, dts * 0.8f);
-    f.h += f.vh * dts; f.a += f.va * dts;
-    if (f.a > 1000.0f || f.a < -1000.0f) f.a = fmodf(f.a, HW_TAU);
-    if (f.h > 0.99f) { f.h = 0.99f; f.vh = -fabsf(f.vh) * 0.3f; }
-    if (f.h <= pile) {
-      if (SEGMENT.check1) { f.landed = 1; continue; }
-      f.h = 1.0f + hwRand() * 0.1f; f.a = hwRand() * HW_TAU; f.vh = -vt;
+/*
+ * Christmas Light Show: a choreographed show that steps through six full-tree scenes built for a cone,
+ * crossfading between them: curtains sweeping around the tree, rings rising, woven counter-spirals,
+ * blocks flipping colors, color pouring down from the star, and a sparkle storm. Optional beat flash.
+ */
+struct XmShow { uint32_t last; float tt, st; uint8_t scene, prev; };
+
+static uint32_t xmShowScene(uint8_t k, int i, float h, float a, float t, float sp, float e, const uint32_t* c) {
+  switch (k) {
+    case 0: {  // curtains wiping around the tree
+      const float x = a / HW_TAU * 6.0f + t * sp * 0.5f; const int n = (int)floorf(x);
+      return hwMix(c[((n % 3) + 3) % 3], c[(((n + 1) % 3) + 3) % 3], hwSmooth((xmFrac(x) - (1.0f - e)) / e));
     }
-    uint32_t fc = snow;
-    float kk = 0.85f;
-    if (SEGMENT.check3) { const float tw = hwHash2(k, (int32_t)(tt * 6.0f)); if (tw > 0.8f) { fc = sparkle; kk = 1.2f; } }
-    hwBlob(len, N, f.h, f.a, 0.42f / N, size, fc, kk);
+    case 1: {  // rings rising
+      const float x = h * 5.0f - t * sp * 0.8f; const int n = (int)floorf(x);
+      return hwMix(c[((n % 3) + 3) % 3], c[(((n + 1) % 3) + 3) % 3], hwSmooth((xmFrac(x) - (1.0f - e)) / e));
+    }
+    case 2: {  // woven counter-spirals
+      const float x = a / HW_TAU * 3.0f - h * 8.0f + t * sp; const int n = (int)floorf(x);
+      const uint32_t base = hwMix(c[((n % 3) + 3) % 3], c[(((n + 1) % 3) + 3) % 3], hwSmooth((xmFrac(x) - (1.0f - e)) / e));
+      return hwColor(base, 0.55f + 0.45f * cos_approx(HW_TAU * (a / HW_TAU * 2.0f + h * 6.0f - t * sp * 0.7f)));
+    }
+    case 3: {  // blocks: 4 sides x 3 tiers flipping colors on the beat
+      const int tier = min(2, (int)(h * 3.0f)), quad = (int)(xmFrac(a / HW_TAU + 0.125f) * 4.0f);
+      const float bt = t * sp * 1.5f; const int beat = (int)bt;
+      const int blk = tier * 4 + quad;
+      const uint32_t col = c[(int)(hwHash2(blk, beat) * 3.0f) % 3];
+      return color_add(col, hwColor(WHITE, 0.6f * max(0.0f, 1.0f - xmFrac(bt) * 4.0f) * (hwHash2(blk, beat + 99) > 0.5f ? 1.0f : 0.0f)));
+    }
+    case 4: {  // colors pour down from the top one after another
+      const float x = t * sp * 0.4f; const int n = (int)floorf(x); const float p = xmFrac(x) * 1.2f;
+      const float edge = 1.0f - p;
+      const uint32_t now = c[n % 3], before = c[(n + 2) % 3];
+      const float dd = (h - edge) / 0.03f;
+      return color_add(h > edge ? now : before, hwColor(WHITE, 0.8f * hwGauss(dd * dd)));
+    }
+    default: {  // sparkle storm over two halves that trade places
+      const float side = cos_approx(a - t * sp * 0.6f);
+      uint32_t col = hwMix(c[0], c[1], hwSmooth(side / e * 0.5f + 0.5f));
+      const float g = xmTwinkle(i, t * 2.0f, 1.0f, 5);
+      if (g > 0.0f) col = color_add(col, hwColor(c[2], g));
+      return col;
+    }
   }
 }
-static const char _data_FX_MODE_XMAS_SNOWGLOBE[] PROGMEM = "Christmas Snow Globe@Settle speed,Flakes,Flake size,Shake interval,Tree wraps,Auto shake,Swirl,Sparkle;Snow,Sparkle,Water;;1;sx=90,ix=160,c1=80,c2=100,c3=12,o1=1,o2=1,o3=1";
+
+void mode_xmas_lightshow(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(XmShow))) { mode_static(); return; }
+  XmShow* st = reinterpret_cast<XmShow*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(XmShow)); st->last = strip.now; st->prev = 5; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t c[3] = { SEGCOLOR(0), xmOr(SEGCOLOR(1), 0x00C000), xmOr(SEGCOLOR(2), WHITE) };
+  const float sp = 0.4f + SEGMENT.speed / 255.0f * 1.6f;
+  const float sceneLen = 4.0f + SEGMENT.intensity / 255.0f * 12.0f;
+  const float e = 0.03f + SEGMENT.custom2 / 255.0f * 0.3f;
+  const float spark = SEGMENT.custom1 / 255.0f;
+
+  st->st += dts;
+  if (st->st >= sceneLen) {
+    st->st = 0.0f; st->prev = st->scene;
+    if (SEGMENT.check1) { uint8_t nx = hw_random8(5); st->scene = nx >= st->scene ? nx + 1 : nx; }
+    else st->scene = (st->scene + 1) % 6;
+  }
+  const float fade = hwSmooth(st->st / 0.8f);
+  const float beat = SEGMENT.check2 ? 0.75f + 0.25f * expf(-xmFrac(tt * sp) * 6.0f) : 1.0f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), a = HW_TAU * N * h;
+    uint32_t col = xmShowScene(st->scene, i, h, a, st->st, sp, e, c);
+    if (fade < 1.0f) col = hwMix(xmShowScene(st->prev, i, h, a, st->st + sceneLen, sp, e, c), col, fade);
+    col = hwColor(col, 0.8f * beat);
+    if (SEGMENT.check3 && spark > 0.0f) { const float g = xmTwinkle(i, tt, spark, 61); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g)); }
+    SEGMENT.setPixelColor(i, col);
+  }
+}
+static const char _data_FX_MODE_XMAS_LIGHTSHOW[] PROGMEM = "Christmas Light Show@Show speed,Scene length,Sparkles,Edge softness,Tree wraps,Random order,Beat flash,Sparkle accents;Color 1,Color 2,Color 3;;1;sx=120,ix=100,c1=80,c2=60,c3=12,o1=0,o2=1,o3=1";
 // AI: end
 
 void WS2812FX::setupEffectData() {
@@ -12323,10 +12326,10 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_XMAS_CANDYCANE, &mode_xmas_candycane, _data_FX_MODE_XMAS_CANDYCANE);
   addEffect(FX_MODE_XMAS_SNOWMAN, &mode_xmas_snowman, _data_FX_MODE_XMAS_SNOWMAN);
   addEffect(FX_MODE_XMAS_SANTA, &mode_xmas_santa, _data_FX_MODE_XMAS_SANTA);
-  addEffect(FX_MODE_XMAS_STAR, &mode_xmas_star, _data_FX_MODE_XMAS_STAR);
-  addEffect(FX_MODE_XMAS_GARLAND, &mode_xmas_garland, _data_FX_MODE_XMAS_GARLAND);
-  addEffect(FX_MODE_XMAS_RETRO, &mode_xmas_retro, _data_FX_MODE_XMAS_RETRO);
-  addEffect(FX_MODE_XMAS_SNOWGLOBE, &mode_xmas_snowglobe, _data_FX_MODE_XMAS_SNOWGLOBE);
+  addEffect(FX_MODE_XMAS_PLAID, &mode_xmas_plaid, _data_FX_MODE_XMAS_PLAID);
+  addEffect(FX_MODE_XMAS_DRESSED, &mode_xmas_dressed, _data_FX_MODE_XMAS_DRESSED);
+  addEffect(FX_MODE_XMAS_FROST, &mode_xmas_frost, _data_FX_MODE_XMAS_FROST);
+  addEffect(FX_MODE_XMAS_LIGHTSHOW, &mode_xmas_lightshow, _data_FX_MODE_XMAS_LIGHTSHOW);
 
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);
