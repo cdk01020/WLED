@@ -386,7 +386,19 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_XMAS_DRESSED             231
 #define FX_MODE_XMAS_FROST               232
 #define FX_MODE_XMAS_LIGHTSHOW           233
-#define MODE_COUNT                     234
+#define FX_MODE_EGG_PLATTER              234
+#define FX_MODE_EGG_PIPING               235
+#define FX_MODE_EGG_PAPRIKA              236
+#define FX_MODE_EGG_HATCH                237
+#define FX_MODE_SAX_BRASS                238
+#define FX_MODE_SAX_WAVES                239
+#define FX_MODE_SAX_CLUB                 240
+#define FX_MODE_SAX_RIFF                 241
+#define FX_MODE_PICKLE_FIZZ              242
+#define FX_MODE_PICKLE_DILL              243
+#define FX_MODE_PICKLE_STORM             244
+#define FX_MODE_PICKLE_HUNT              245
+#define MODE_COUNT                     246
 
 
 #define TRANSITION_FADE            0x00  // universal

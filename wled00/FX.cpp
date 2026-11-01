@@ -12305,6 +12305,738 @@ void mode_xmas_lightshow(void) {
 static const char _data_FX_MODE_XMAS_LIGHTSHOW[] PROGMEM = "Christmas Light Show@Show speed,Scene length,Sparkles,Edge softness,Tree wraps,Random order,Beat flash,Sparkle accents;Color 1,Color 2,Color 3;;1;sx=120,ix=100,c1=80,c2=60,c3=12,o1=0,o2=1,o3=1";
 // AI: end
 
+// AI: start
+/*
+ * Fun day effects: Deviled Egg Day (Nov 2), Saxophone Day (Nov 6) and Pickle Day (Nov 14).
+ * Same tree geometry as the Halloween and Christmas effects (hwHeight, hwArc, hwBlob, xmTwinkle, ...):
+ * pixel 0 is the bottom, "Tree wraps" (c3) is how many times the strand goes around the tree.
+ * Previewed in a browser visualizer that uses the same math.
+ */
+// like xmOr, but also treats WLED's default orange as "not set" so green effects start out green
+static inline uint32_t fdOr(uint32_t c, uint32_t fb) { return (c == BLACK || c == DEFAULT_COLOR) ? fb : c; }
+// position around the trunk at height h, 0..1
+static inline float fdAz(float h, float N) { return xmFrac(N * h); }
+// radius of the tree at height h (in tree heights)
+static inline float fdRad(float h) { return HW_RAD * (1.0f - h) + 0.012f; }
+// value noise that wraps around every P cells in x (no seam around the trunk), 0..1
+static float fdNoiseP(float x, float y, int32_t P) {
+  const float xf0 = floorf(x), yf0 = floorf(y);
+  int32_t xi = ((int32_t)xf0) % P; if (xi < 0) xi += P;
+  const int32_t xj = (xi + 1) % P, yi = (int32_t)yf0;
+  const float xf = x - xf0, yf = y - yf0;
+  const float u = xf * xf * (3.0f - 2.0f * xf), v = yf * yf * (3.0f - 2.0f * yf);
+  const float a = hwHash2(xi, yi), b = hwHash2(xj, yi), c = hwHash2(xi, yi + 1), d = hwHash2(xj, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+// distance on the tree surface (in tree heights) between pixel (h, its angle) and a point at height hc / angle ac
+static inline float fdDist(float h, float N, float hc, float ac) { const float dh = h - hc, da = hwArc(h, N, ac); return sqrtf(dh * dh + da * da); }
+
+struct FdP { float h, a, vh, va, life, max; uint8_t k; };
+struct FdClock { uint32_t last; float tt, ph; };
+
+/*
+ * Deviled Egg Platter: the tree becomes a platter stacked with deviled egg halves, rows of them all the
+ * way up. Each has a glossy white, a piped star of yolk filling and a dusting of paprika. Rows turn in
+ * opposite directions like a lazy susan; optional chives and a shimmer on the whites.
+ */
+void mode_egg_platter(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdClock))) { mode_static(); return; }
+  FdClock* st = reinterpret_cast<FdClock*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdClock)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t yolk = SEGCOLOR(0), white = xmOr(SEGCOLOR(1), 0xFFF0D0), pap = xmOr(SEGCOLOR(2), 0xFF2800);
+  if (SEGMENT.check1) { st->ph += dts * SEGMENT.speed / 255.0f * 0.12f; if (st->ph > 1000.0f) st->ph -= 1000.0f; }
+  const float M = 3.0f + SEGMENT.intensity / 255.0f * 9.0f;  // eggs around the bottom row
+  const int R = 2 + (SEGMENT.custom1 * 5 + 127) / 255;       // rows of eggs
+  const float papAmt = SEGMENT.custom2 / 255.0f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len);
+    const float rowf = h * R;
+    const int row = min((int)rowf, R - 1);
+    const float fy = rowf - row, hc = (row + 0.5f) / R;
+    const int Mr = max(1, (int)(M * (1.0f - hc) + 0.5f));
+    const float u = xmFrac(fdAz(h, N) + st->ph * ((row & 1) ? -1.0f : 1.0f) + row * 0.37f) * Mr;
+    const float fx = u - floorf(u);
+    const float cw = HW_TAU * fdRad(h) / Mr, chh = 1.0f / R;   // cell size in tree heights
+    const float ew = min(cw, chh * 1.6f) * 0.46f, eh = chh * 0.42f;
+    const float ex = (fx - 0.5f) * cw / ew, ey = (fy - 0.5f) * chh / eh;
+    const float r = sqrtf(ex * ex + ey * ey);
+    uint32_t c = hwColor(white, 0.03f);  // the platter between the eggs
+    if (r < 1.0f) {
+      c = hwMix(c, hwColor(white, 0.45f + 0.15f * (1.0f - r * r)), hwSmooth((1.0f - r) / 0.15f));
+      if (SEGMENT.check3) { const float g = xmTwinkle(i, tt, 0.7f, 41); if (g > 0.0f) c = color_add(c, hwColor(WHITE, g * 0.8f)); }
+      const float ry = r / 0.6f;
+      if (ry < 1.0f) {
+        const float ang = atan2f(ey, ex);
+        const float ridge = 0.62f + 0.38f * (0.5f + 0.5f * cos_approx(6.0f * ang + ry * 7.0f));  // piped star
+        uint32_t y = hwColor(yolk, 0.95f * ridge);
+        if (hwHash2(i, 17) < papAmt * 0.4f * (1.0f - ry * 0.5f)) y = hwMix(y, pap, 0.85f);
+        if (SEGMENT.check2 && hwHash2(i, 29) < 0.07f) y = hwMix(y, 0x30C020, 0.8f);
+        c = hwMix(c, y, hwSmooth((1.0f - ry) / 0.2f));
+      }
+    }
+    SEGMENT.setPixelColor(i, c);
+  }
+}
+static const char _data_FX_MODE_EGG_PLATTER[] PROGMEM = "Deviled Egg Platter@Spin speed,Eggs around,Rows,Paprika,Tree wraps,Spin,Chives,Shimmer;Yolk,Egg white,Paprika;;1;sx=80,ix=110,c1=100,c2=120,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Deviled Egg Piping: a piping bag swirls yolk filling up the strand from the bottom with flowing
+ * star-tip ridges and a bright tip. Once the tree is full, paprika dusts over it, then it is "eaten"
+ * (fades back to egg white) and piping starts again.
+ */
+struct FdPipe { uint32_t last; float tt, spin, fill, phT; uint8_t phase; };
+
+void mode_egg_piping(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdPipe))) { mode_static(); return; }
+  FdPipe* st = reinterpret_cast<FdPipe*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdPipe)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const uint32_t yolk = SEGCOLOR(0), white = xmOr(SEGCOLOR(1), 0xFFF0D0), pap = xmOr(SEGCOLOR(2), 0xFF2800);
+  st->spin += dts * (0.5f + SEGMENT.speed / 255.0f * 6.0f); if (st->spin > 6283.0f) st->spin -= 6283.0f;
+  const float fillTime = 4.0f + (255 - SEGMENT.intensity) / 255.0f * 16.0f;
+  const float K = 0.12f + SEGMENT.custom1 / 255.0f * 0.5f;  // ridge frequency along the strand
+  const float papAmt = SEGMENT.custom2 / 255.0f;
+
+  st->phT += dts;
+  if (st->phase == 0) { st->fill += dts / fillTime; if (st->fill >= 1.0f) { st->fill = 1.0f; st->phase = 1; st->phT = 0.0f; } }
+  else if (st->phase == 1) { if (st->phT > 6.0f && SEGMENT.check1) { st->phase = 2; st->phT = 0.0f; } }
+  else if (st->phT > 1.5f) { st->phase = 0; st->phT = 0.0f; st->fill = 0.0f; }
+
+  const float F = st->fill * (len + 8);
+  const float dust = (st->phase >= 1 && SEGMENT.check2) ? papAmt * 0.35f * hwClamp01(st->phase == 1 ? st->phT / 3.0f : 1.0f) : 0.0f;
+  const float eaten = (st->phase == 2) ? hwSmooth(st->phT / 1.5f) : 0.0f;
+
+  for (int i = 0; i < len; i++) {
+    uint32_t c = hwColor(white, 0.25f + 0.08f * hwNoise(i * 0.03f, tt * 0.3f));  // egg white waiting
+    if ((float)i < F) {
+      const float ridge = 0.55f + 0.45f * (0.5f + 0.5f * sin_approx(i * K - st->spin));
+      uint32_t y = hwColor(hwMix(yolk, white, 0.12f * ridge), ridge);
+      if (SEGMENT.check3) { const float g = xmTwinkle(i, tt, 0.6f, 43); if (g > 0.0f) y = color_add(y, hwColor(WHITE, g * 0.7f)); }
+      if (dust > 0.0f && hwHash2(i, 19) < dust) y = hwMix(y, pap, 0.9f);
+      const float tip = F - (float)i;
+      if (st->phase == 0 && tip < 10.0f) y = color_add(y, hwColor(hwMix(yolk, WHITE, 0.6f), 1.0f - tip / 10.0f));
+      c = hwMix(y, c, eaten);
+    } else if (st->phase == 0 && (float)i < F + 4.0f) {
+      c = color_add(c, hwColor(yolk, 0.5f * (1.0f - ((float)i - F) / 4.0f)));
+    }
+    SEGMENT.setPixelColor(i, c);
+  }
+}
+static const char _data_FX_MODE_EGG_PIPING[] PROGMEM = "Deviled Egg Piping@Swirl speed,Fill speed,Ridges,Paprika,,Repeat,Paprika dust,Gloss;Yolk,Egg white,Paprika;;1;sx=110,ix=140,c1=110,c2=140,o1=1,o2=1,o3=1";
+
+/*
+ * Deviled Egg Paprika Dust: the tree is one big deviled egg, a band of swirling yolk filling inside
+ * egg white. Paprika flakes drift down from the top and settle into red specks that slowly fade;
+ * optional chive flakes, "sneeze" gusts that blow a cloud of paprika sideways, and glints on the whites.
+ */
+struct FdDust { uint32_t last, nextGust; float tt, acc, decay, gust; uint8_t n; FdP p[60]; };
+
+void mode_egg_paprika(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdDust) + 2 * len)) { mode_static(); return; }
+  FdDust* st = reinterpret_cast<FdDust*>(SEGENV.data);
+  uint8_t* dust = SEGENV.data + sizeof(FdDust);
+  uint8_t* kind = dust + len;
+  if (SEGENV.call == 0) { memset(SEGENV.data, 0, sizeof(FdDust) + 2 * len); st->last = strip.now; st->nextGust = strip.now + 6000; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t yolk = SEGCOLOR(0), pap = xmOr(SEGCOLOR(1), 0xFF2800), chive = xmOr(SEGCOLOR(2), 0x30B020);
+  const uint32_t white = 0xFFF0D0;
+
+  // sneeze gusts
+  if (SEGMENT.check1 && strip.now >= st->nextGust) { st->gust = 1.5f; st->nextGust = strip.now + 8000 + hw_random16(6000); }
+  if (st->gust > 0.0f) st->gust -= dts;
+  const bool gusting = st->gust > 0.0f;
+  // spawn flakes
+  st->acc += dts * (2.0f + SEGMENT.intensity / 255.0f * 35.0f) * (gusting ? 6.0f : 1.0f);
+  while (st->acc >= 1.0f) {
+    st->acc -= 1.0f;
+    if (st->n >= 60) { st->acc = 0.0f; break; }
+    FdP& p = st->p[st->n++];
+    p.h = 1.02f; p.a = hwRand() * HW_TAU;
+    p.vh = -(0.06f + SEGMENT.speed / 255.0f * 0.3f) * (0.7f + 0.6f * hwRand());
+    p.va = (hwRand() - 0.5f) * 0.6f;
+    p.max = hwHeight(hw_random16(len), len);  // where it lands, even per pixel
+    p.k = (SEGMENT.check2 && hw_random8() < 50) ? 1 : 0;
+    p.life = 0.0f;
+  }
+  // settle decay
+  st->decay += dts * (3.0f + (255 - SEGMENT.custom2) / 255.0f * 50.0f);
+  const int dec = (int)st->decay; st->decay -= dec;
+  if (dec > 0) for (int i = 0; i < len; i++) dust[i] = dust[i] > dec ? dust[i] - dec : 0;
+
+  const float sw = 0.05f + SEGMENT.custom1 / 255.0f * 0.5f;
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    const float edgeN = fdNoiseP(az * 5.0f, tt * 0.1f, 5);
+    const float lo = 0.12f + 0.06f * edgeN, hi = 0.80f + 0.06f * fdNoiseP(az * 5.0f + 2.5f, tt * 0.1f + 7.0f, 5);
+    const float inY = hwSmooth((h - lo) / 0.04f) * hwSmooth((hi - h) / 0.04f);
+    const float sv = fdNoiseP(az * 6.0f + tt * sw * 0.3f, h * 6.0f - tt * sw, 6);
+    uint32_t c = hwMix(hwColor(white, 0.42f), hwColor(yolk, 0.6f + 0.4f * sv), inY);
+    if (SEGMENT.check3 && inY < 0.5f) { const float g = xmTwinkle(i, tt, 0.6f, 47); if (g > 0.0f) c = color_add(c, hwColor(WHITE, g * 0.8f)); }
+    if (dust[i]) c = hwMix(c, kind[i] ? chive : pap, dust[i] / 255.0f);
+    SEGMENT.setPixelColor(i, c);
+  }
+  // falling flakes
+  for (int j = 0; j < st->n; ) {
+    FdP& p = st->p[j];
+    p.h += p.vh * dts * (gusting ? 0.5f : 1.0f);
+    p.a += (p.va + (gusting ? 2.5f : 0.0f) + 0.4f * sin_approx(tt * 2.0f + j)) * dts;
+    if (p.h <= p.max) {
+      const int idx = (int)(hwIndexAt(p.h, len) + 0.5f);
+      if (idx >= 0 && idx < len) { dust[idx] = min(255, dust[idx] + 200); kind[idx] = p.k; }
+      st->p[j] = st->p[--st->n];
+      continue;
+    }
+    hwBlob(len, N, p.h, p.a, 0.01f, 0.015f, p.k ? chive : pap, 0.9f);
+    j++;
+  }
+}
+static const char _data_FX_MODE_EGG_PAPRIKA[] PROGMEM = "Deviled Egg Paprika Dust@Fall speed,Dust amount,Filling swirl,Settle time,Tree wraps,Sneeze gusts,Chives,Glints;Filling,Paprika,Chives;;1;sx=90,ix=120,c1=90,c2=170,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Deviled Egg Hatch: a smooth glowing egg shell covers the tree, golden cracks of light spread across it,
+ * the shell falls away in pieces with a burst of sparkles to reveal a glowing, wobbling yolk, then the
+ * shell grows back from the bottom and it starts over.
+ */
+struct FdHatch { uint32_t last; float tt, ct, oa; };
+
+void mode_egg_hatch(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdHatch))) { mode_static(); return; }
+  FdHatch* st = reinterpret_cast<FdHatch*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdHatch)); st->last = strip.now; st->oa = hwRand(); }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t yolk = SEGCOLOR(0), shell = xmOr(SEGCOLOR(1), 0xFFE8C8), crackC = xmOr(SEGCOLOR(2), 0xFFD060);
+  st->ct += dts * (0.4f + SEGMENT.speed / 255.0f * 1.6f);
+  if (!SEGMENT.check3 && st->ct > 13.0f) st->ct = 13.0f;          // no repeat: stay hatched
+  if (st->ct >= 17.0f) { st->ct = 0.0f; st->oa = hwRand(); }
+  const float ct = st->ct;
+  const int32_t P = 3 + (SEGMENT.intensity * 6 + 127) / 255;      // crack cells around the tree
+  const float V = P * 1.3f;
+  const float w = 0.015f + SEGMENT.custom1 / 255.0f * 0.05f;
+  const float glow = 0.3f + SEGMENT.custom2 / 255.0f * 0.9f;
+  const float spread = hwClamp01((ct - 3.0f) / 4.0f) * 1.4f;      // how far the cracks have run
+  const float burst = (ct > 7.0f && ct < 10.0f) ? 1.0f - (ct - 7.0f) / 3.0f : 0.0f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N), a = HW_TAU * N * h;
+    // yolk underneath
+    float wob = SEGMENT.check2 ? 0.75f + 0.25f * sin_approx(h * 14.0f - ct * 3.0f + a / N * 2.0f) : 0.9f;
+    uint32_t inside = hwColor(yolk, glow * wob);
+    if (SEGMENT.check1 && burst > 0.0f) { const float g = xmTwinkle(i, tt * 2.0f, 4.0f * burst, 53); if (g > 0.0f) inside = color_add(inside, hwColor((i & 1) ? WHITE : yolk, g)); }
+    // shell
+    const float x = az * P, y = h * V;
+    const float n1 = fdNoiseP(x, y, P), n2 = fdNoiseP(x * 2.0f + 0.5f, y * 2.0f + 3.0f, P * 2);
+    const float line = max(1.0f - fabsf(n1 - 0.5f) / w, 1.0f - fabsf(n2 - 0.5f) / (w * 0.7f));
+    const float reach = hwSmooth((spread - fdDist(h, N, 0.45f, st->oa * HW_TAU)) / 0.1f);
+    const float crack = hwClamp01(line) * reach;
+    const float drop = 7.0f + hwHash2((int32_t)floorf(x * 2.0f) % (P * 2), (int32_t)floorf(y * 2.0f)) * 2.2f;  // when this piece falls
+    float shellOn = ct < drop ? 1.0f : 0.0f;
+    if (ct >= 15.0f) shellOn = hwSmooth(((ct - 15.0f) / 2.0f * 1.15f - h) / 0.08f);  // grows back from the bottom
+    uint32_t c = inside;
+    if (shellOn > 0.0f) {
+      uint32_t s = hwColor(shell, 0.45f + 0.06f * sin_approx(tt * 1.5f) + 0.05f * hwHash2(i, 61));
+      if (crack > 0.0f && ct < 15.0f) s = hwMix(s, hwColor(crackC, 0.8f + 0.6f * glow), crack);
+      c = hwMix(inside, s, shellOn);
+    }
+    SEGMENT.setPixelColor(i, c);
+  }
+}
+static const char _data_FX_MODE_EGG_HATCH[] PROGMEM = "Deviled Egg Hatch@Speed,Cracks,Crack width,Yolk glow,Tree wraps,Sparkle burst,Wobble,Repeat;Yolk,Shell,Crack light;;1;sx=90,ix=110,c1=100,c2=150,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Saxophone Brass Shine: the tree is a gleaming brass horn. A specular highlight sweeps around it,
+ * fine engraving shimmers, pearl key pads open and close to a beat, the bell at the bottom glows
+ * with each note, and glints flash on the brass.
+ */
+void mode_sax_brass(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdClock))) { mode_static(); return; }
+  FdClock* st = reinterpret_cast<FdClock*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdClock)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t brass = SEGCOLOR(0), shine = xmOr(SEGCOLOR(1), 0xFFF0C0), pad = xmOr(SEGCOLOR(2), 0xE8E8FF);
+  const float sp = 0.1f + SEGMENT.speed / 255.0f * 0.6f;
+  st->ph += dts * sp * (SEGMENT.check3 ? -1.0f : 1.0f); if (st->ph > 1000.0f) st->ph -= 1000.0f; if (st->ph < -1000.0f) st->ph += 1000.0f;
+  const float bps = 1.0f + SEGMENT.speed / 255.0f * 2.0f;
+  const float beat = tt * bps, bf = xmFrac(beat);
+  const float pulse = expf(-bf * 5.0f);
+  const float eng = SEGMENT.custom1 / 255.0f, bell = SEGMENT.custom2 / 255.0f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    uint32_t c = hwColor(brass, 0.42f + 0.12f * hwNoise(i * 0.02f, 0.0f));
+    if (eng > 0.0f) {
+      const float n = fdNoiseP(az * 12.0f, h * 14.0f, 12);
+      const float l = hwSmooth(1.0f - fabsf(n - 0.5f) / 0.05f) * eng;
+      c = hwMix(c, shine, 0.35f * l);
+    }
+    const float d1 = hwAngDiff(HW_TAU * (az + h * 0.25f), HW_TAU * st->ph) / 0.45f;
+    const float d2 = hwAngDiff(HW_TAU * (az + h * 0.25f), HW_TAU * (st->ph + 0.5f)) / 0.25f;
+    c = color_add(c, hwColor(shine, 0.9f * hwGauss(d1 * d1) + 0.35f * hwGauss(d2 * d2)));
+    if (h < 0.22f) { const float b = (1.0f - h / 0.22f); c = color_add(c, hwColor(brass, bell * b * b * (0.4f + 0.8f * pulse))); }
+    if (SEGMENT.check2) { const float g = xmTwinkle(i, tt, 0.8f, 67); if (g > 0.0f) c = color_add(c, hwColor(shine, g)); }
+    SEGMENT.setPixelColor(i, c);
+  }
+  // key pads up the front of the horn
+  const int K = 2 + (SEGMENT.intensity * 8 + 127) / 255;
+  const int bi = (int)beat;
+  for (int k = 0; k < K; k++) {
+    const float hk = 0.2f + 0.65f * k / (float)max(1, K - 1);
+    const bool down = SEGMENT.check1 && hwHash2(k, bi) > 0.55f;
+    const float ak = 0.6f * sin_approx(k * 1.7f);  // keys sit on either side of the front
+    if (down) hwBlob(len, N, hk, ak, 0.018f, 0.03f, brass, 0.4f + 0.6f * pulse);
+    else      hwBlob(len, N, hk, ak, 0.018f, 0.03f, pad, 0.75f);
+  }
+}
+static const char _data_FX_MODE_SAX_BRASS[] PROGMEM = "Saxophone Brass Shine@Shine speed,Keys,Engraving,Bell glow,Tree wraps,Key presses,Glints,Reverse;Brass,Shine,Key pads;;1;sx=90,ix=140,c1=110,c2=150,c3=12,o1=1,o2=1";
+
+/*
+ * Saxophone Sound Waves: notes blow out of the bell at the bottom on a swinging jazz rhythm. Each note
+ * is a wobbly ring of color that rolls up the tree and fades; accents are brighter and wider,
+ * and a shimmer of sparkles trails behind each wave.
+ */
+struct FdRing { float h, amp, w; uint8_t k; };
+struct FdWaves { uint32_t last; float tt, bt; uint8_t step, n, lastK; FdRing r[16]; };
+
+void mode_sax_waves(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdWaves))) { mode_static(); return; }
+  FdWaves* st = reinterpret_cast<FdWaves*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdWaves)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t c[3] = { SEGCOLOR(0), xmOr(SEGCOLOR(1), 0x8020FF), xmOr(SEGCOLOR(2), 0x0070FF) };
+  const float bps = 1.0f + SEGMENT.speed / 255.0f * 2.5f;
+  const float stepLen = (SEGMENT.check1 ? ((st->step & 1) ? 1.0f / 3.0f : 2.0f / 3.0f) : 0.5f) / bps;  // swing 8ths
+  st->bt += dts;
+  if (st->bt >= stepLen) {
+    st->bt -= stepLen; st->step++;
+    const bool down = !(st->step & 1);
+    if (hw_random8() < 70 + SEGMENT.intensity * 180 / 255 && st->n < 16) {
+      FdRing& r = st->r[st->n++];
+      r.h = 0.0f;
+      r.amp = (down ? 1.0f : 0.7f) * (0.8f + 0.2f * hwRand());
+      r.w = (0.02f + SEGMENT.custom1 / 255.0f * 0.08f) * (down ? 1.2f : 0.9f);
+      uint8_t k = hw_random8(2); if (k >= st->lastK) k++; r.k = st->lastK = k;
+    }
+  }
+  const float vel = 0.3f + bps * 0.12f;
+  for (int j = 0; j < st->n; ) {
+    st->r[j].h += dts * vel; st->r[j].amp *= expf(-dts * 0.7f);
+    if (st->r[j].h > 1.25f) { st->r[j] = st->r[--st->n]; continue; }
+    j++;
+  }
+  const float bg = SEGMENT.custom2 / 255.0f * 0.2f;
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    const float hp = SEGMENT.check3 ? 1.0f - h : h;  // distance from the bell
+    uint32_t col = hwColor(hwMix(c[1], c[2], fdNoiseP(az * 4.0f, h * 3.0f + tt * 0.2f, 4)), bg);
+    for (int j = 0; j < st->n; j++) {
+      const FdRing& r = st->r[j];
+      const float hr = r.h + 0.02f * sin_approx(3.0f * az * HW_TAU + tt * 4.0f + j * 1.3f);
+      const float d = (hp - hr) / r.w;
+      const float v = hwGauss(d * d) * r.amp;
+      if (v > 0.004f) col = color_add(col, hwColor(c[r.k], v));
+      if (SEGMENT.check2 && hp < hr && hp > hr - 0.18f) {
+        const float g = xmTwinkle(i, tt * 1.5f, 1.5f * r.amp, 71 + j);
+        if (g > 0.0f) col = color_add(col, hwColor(hwMix(c[r.k], WHITE, 0.5f), g * r.amp));
+      }
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+}
+static const char _data_FX_MODE_SAX_WAVES[] PROGMEM = "Saxophone Sound Waves@Tempo,Busy,Wave width,Background,Tree wraps,Swing,Sparkle trails,From top;Wave 1,Wave 2,Wave 3;;1;sx=90,ix=140,c1=110,c2=90,c3=12,o1=1,o2=1";
+
+/*
+ * Saxophone Jazz Club: a smoky late-night club. Slow purple and blue smoke curls up the tree,
+ * a warm spotlight drifts around and lights up the smoke it passes through, brass glints flash in
+ * the light, and now and then the room breaks into applause sparkles.
+ */
+struct FdClub { uint32_t last, nextClap; float tt, ph, clap; };
+
+void mode_sax_club(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdClub))) { mode_static(); return; }
+  FdClub* st = reinterpret_cast<FdClub*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdClub)); st->last = strip.now; st->nextClap = strip.now + 12000; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t spot = SEGCOLOR(0), s1 = xmOr(SEGCOLOR(1), 0x6010C0), s2 = xmOr(SEGCOLOR(2), 0x0030C0);
+  const float sp = 0.3f + SEGMENT.speed / 255.0f * 2.0f;
+  if (SEGMENT.check1) { st->ph += dts * 0.06f * sp; if (st->ph > 1000.0f) st->ph -= 1000.0f; }
+  if (SEGMENT.check3 && strip.now >= st->nextClap) { st->clap = 3.0f; st->nextClap = strip.now + 14000 + hw_random16(10000); }
+  if (st->clap > 0.0f) st->clap -= dts;
+  const float clapAmt = st->clap > 0.0f ? 3.0f * sin_approx(st->clap / 3.0f * 3.14159f) : 0.0f;
+  const float R = 0.08f + SEGMENT.intensity / 255.0f * 0.2f;
+  const float dens = SEGMENT.custom1 / 255.0f, haze = 0.15f + SEGMENT.custom2 / 255.0f * 0.85f;
+  const float hc = 0.45f + 0.12f * sin_approx(tt * 0.21f), ac = HW_TAU * (st->ph + 0.08f * sin_approx(tt * 0.33f));
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    const float n1 = fdNoiseP(az * 5.0f + tt * 0.05f * sp, h * 4.0f - tt * 0.12f * sp, 5);
+    const float n2 = fdNoiseP(az * 9.0f - tt * 0.07f * sp + 3.1f, h * 7.0f - tt * 0.2f * sp, 9);
+    const float smoke = hwSmooth(((n1 * 0.65f + n2 * 0.35f) - (0.75f - dens * 0.6f)) * 3.0f);
+    uint32_t col = hwColor(hwMix(s1, s2, n2), haze * (0.12f + 0.4f * smoke) * (1.0f - 0.4f * h));
+    const float d = fdDist(h, N, hc, ac) / R;
+    const float L = hwGauss(d * d * 1.5f);
+    if (L > 0.003f) {
+      col = color_add(col, hwColor(spot, L * (0.25f + 0.75f * smoke)));
+      if (SEGMENT.check2) { const float g = xmTwinkle(i, tt, 2.0f * L, 73); if (g > 0.0f) col = color_add(col, hwColor(hwMix(spot, WHITE, 0.6f), g)); }
+    }
+    if (clapAmt > 0.0f) { const float g = xmTwinkle(i, tt * 2.5f, clapAmt, 79); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g)); }
+    SEGMENT.setPixelColor(i, col);
+  }
+}
+static const char _data_FX_MODE_SAX_CLUB[] PROGMEM = "Saxophone Jazz Club@Smoke drift,Spotlight size,Smoke density,Haze,Tree wraps,Spotlight moves,Brass glints,Applause;Spotlight,Smoke 1,Smoke 2;;1;sx=70,ix=120,c1=150,c2=130,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Saxophone Solo Riff: a sax solo drawn on the tree. A bright note bobs up and down a pentatonic scale
+ * (low notes low on the tree, high notes high) while it circles the trunk, leaving the melody behind it
+ * as a glowing line like a staff wrapped around the tree. Held notes get vibrato.
+ */
+struct FdRiff { uint32_t last; float tt, noteT, noteDur, cur, head, sampT; int8_t idx; uint8_t wp, rest, step; float hist[80]; };
+
+void mode_sax_riff(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdRiff))) { mode_static(); return; }
+  FdRiff* st = reinterpret_cast<FdRiff*>(SEGENV.data);
+  if (SEGENV.call == 0) {
+    memset(st, 0, sizeof(FdRiff)); st->last = strip.now; st->idx = 4; st->cur = 0.08f + 4 / 9.0f * 0.84f;
+    for (int k = 0; k < 80; k++) st->hist[k] = -1.0f;
+  }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t c[3] = { SEGCOLOR(0), xmOr(SEGCOLOR(1), 0xFF3080), xmOr(SEGCOLOR(2), 0x30A0FF) };
+  const float bps = 1.2f + SEGMENT.speed / 255.0f * 2.5f;
+
+  st->noteT += dts;
+  if (st->noteT >= st->noteDur) {
+    st->noteT = 0.0f; st->step++;
+    static const float durs[8] = { 0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 1.5f, 2.0f, 3.0f };
+    float beats = durs[hw_random8(8)];
+    if (beats == 0.5f) beats = (st->step & 1) ? 1.0f / 3.0f : 2.0f / 3.0f;  // swing the 8ths
+    st->noteDur = beats / bps;
+    st->rest = hw_random8() < 28;
+    int8_t s = (int8_t)hw_random8(5) - 2; if (s == 0) s = 1;
+    if (hw_random8() < 30) s *= 2;
+    st->idx += s; if (st->idx < 0) st->idx = -st->idx; if (st->idx > 9) st->idx = 18 - st->idx;
+  }
+  const float target = 0.08f + st->idx / 9.0f * 0.84f;
+  st->cur += (target - st->cur) * min(1.0f, dts * 25.0f);
+  float vib = 0.0f;
+  if (SEGMENT.check1 && st->noteDur > 0.5f && st->noteT > 0.3f) vib = 0.012f * sin_approx(tt * 32.0f);
+  st->head += dts * (0.12f + bps * 0.03f); if (st->head > 1000.0f) st->head -= 1000.0f;
+  st->sampT += dts;
+  while (st->sampT >= 0.05f) { st->sampT -= 0.05f; st->hist[st->wp] = st->rest ? -1.0f : st->cur + vib; st->wp = (st->wp + 1) % 80; }
+
+  const float D = 1.0f + SEGMENT.intensity / 255.0f * 3.0f;   // seconds of melody per trip around the tree
+  const float th = 0.012f + SEGMENT.custom1 / 255.0f * 0.04f;
+  const float staff = SEGMENT.custom2 / 255.0f;
+  const float hd = xmFrac(st->head);
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    uint32_t col = hwColor(hwMix(c[2], 0x300050, 0.5f), 0.04f + 0.12f * staff * (1.0f - 0.5f * h));  // dim stage glow
+    if (SEGMENT.check2 && staff > 0.0f) {
+      for (int l = 0; l < 5; l++) { const float dl = (h - (0.2f + l * 0.15f)) / 0.007f; col = color_add(col, hwColor(0x6070A0, 0.3f * staff * hwGauss(dl * dl))); }
+    }
+    const float lag = xmFrac(hd - az);
+    const int s = (int)(lag * D / 0.05f);
+    if (s < 79) {
+      const float hv = st->hist[(st->wp + 159 - s) % 80];
+      if (hv >= 0.0f) {
+        const float d = (h - hv) / th;
+        const float v = hwGauss(d * d) * (1.0f - lag * 0.85f);
+        if (v > 0.004f) {
+          const float p = hwClamp01((hv - 0.08f) / 0.84f);
+          const uint32_t pc = p < 0.5f ? hwMix(c[0], c[1], p * 2.0f) : hwMix(c[1], c[2], p * 2.0f - 1.0f);
+          col = color_add(col, hwColor(pc, v));
+        }
+      }
+      if (SEGMENT.check3 && lag < 0.12f && fabsf(h - st->cur) < 0.1f && !st->rest) {
+        const float g = xmTwinkle(i, tt * 2.0f, 3.0f, 83); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g));
+      }
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+  if (!st->rest) hwBlob(len, N, st->cur + vib, hd * HW_TAU, th * 1.3f, 0.03f, hwMix(c[0], WHITE, 0.5f), 1.0f);
+}
+static const char _data_FX_MODE_SAX_RIFF[] PROGMEM = "Saxophone Solo Riff@Tempo,Trail length,Line thickness,Background,Tree wraps,Vibrato,Staff lines,Note sparkles;Low notes,Mid notes,High notes;;1;sx=90,ix=140,c1=120,c2=120,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Pickle Jar Fizz: the tree is a jar of pickles in swirling brine. Fizzy bubbles rise and pop into
+ * green and white sparks, dill flecks drift, the whole jar twinkles with green and white sparkles,
+ * and every so often the jar gets shaken into a fizzy sparkle frenzy.
+ */
+struct FdFizz { uint32_t last, nextShake; float tt, acc, shake; uint8_t nb, ns; FdP b[50]; FdP s[60]; };
+
+void mode_pickle_fizz(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdFizz))) { mode_static(); return; }
+  FdFizz* st = reinterpret_cast<FdFizz*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdFizz)); st->last = strip.now; st->nextShake = strip.now + 10000; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t pick = fdOr(SEGCOLOR(0), 0x20B020), brine = xmOr(SEGCOLOR(1), 0x90C818), spark = xmOr(SEGCOLOR(2), WHITE);
+  const uint32_t lime = hwMix(pick, 0x80FF40, 0.5f);
+  if (SEGMENT.check3 && strip.now >= st->nextShake) { st->shake = 2.5f; st->nextShake = strip.now + 12000 + hw_random16(8000); }
+  if (st->shake > 0.0f) st->shake -= dts;
+  const float sh = st->shake > 0.0f ? sin_approx(st->shake / 2.5f * 3.14159f) : 0.0f;
+  const float sp = 0.3f + SEGMENT.speed / 255.0f * 1.5f;
+
+  st->acc += dts * (3.0f + SEGMENT.intensity / 255.0f * 30.0f) * (1.0f + 4.0f * sh);
+  while (st->acc >= 1.0f) {
+    st->acc -= 1.0f;
+    if (st->nb >= 50) { st->acc = 0.0f; break; }
+    FdP& b = st->b[st->nb++];
+    b.h = 0.0f; b.a = hwRand() * HW_TAU; b.vh = (0.08f + SEGMENT.speed / 255.0f * 0.35f) * (0.6f + 0.8f * hwRand());
+    b.va = 0.0f; b.max = 0.75f + 0.27f * hwRand(); b.life = hwRand() * 6.0f;
+  }
+  const float sw = SEGMENT.custom1 / 255.0f;
+  const float amt = SEGMENT.custom2 / 255.0f * 2.0f * (1.0f + 2.0f * sh);
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    const float n = fdNoiseP(az * 4.0f + tt * 0.03f, h * 3.0f - tt * (0.04f + 0.2f * sw) * sp, 4);
+    uint32_t col = hwColor(hwMix(pick, brine, n * 0.6f), 0.22f + 0.18f * n);
+    if (SEGMENT.check2 && fdNoiseP(az * 30.0f, h * 30.0f - tt * 0.15f, 30) > 0.82f) col = hwMix(col, 0x204000, 0.8f);
+    float g = xmTwinkle(i, tt * sp, amt, 13); if (g > 0.0f) col = color_add(col, hwColor(lime, 1.2f * g));
+    g = xmTwinkle(i, tt * sp * 1.2f, amt * 0.8f, 31); if (g > 0.0f) col = color_add(col, hwColor(spark, g));
+    SEGMENT.setPixelColor(i, col);
+  }
+  for (int j = 0; j < st->nb; ) {
+    FdP& b = st->b[j];
+    b.h += b.vh * dts * (1.0f + sh); b.life += dts;
+    const float a = b.a + 0.3f * sin_approx(b.life * 4.0f);
+    if (b.h >= b.max) {
+      if (SEGMENT.check1) for (int k = 0; k < 5 && st->ns < 60; k++) {
+        FdP& s = st->s[st->ns++];
+        const float th = hwRand() * HW_TAU, v = 0.05f + 0.08f * hwRand();
+        s.h = b.h; s.a = a; s.vh = v * cos_approx(th); s.va = v * sin_approx(th) / fdRad(b.h); s.life = 0.0f; s.max = 0.4f + 0.4f * hwRand(); s.k = k & 1;
+      }
+      st->b[j] = st->b[--st->nb]; continue;
+    }
+    hwBlob(len, N, b.h, a, 0.02f, 0.03f, pick, 0.35f);
+    hwBlob(len, N, b.h, a, 0.009f, 0.012f, spark, 0.9f);
+    j++;
+  }
+  for (int j = 0; j < st->ns; ) {
+    FdP& s = st->s[j];
+    s.life += dts; if (s.life >= s.max) { st->s[j] = st->s[--st->ns]; continue; }
+    s.h += s.vh * dts; s.a += s.va * dts;
+    hwBlob(len, N, s.h, s.a, 0.008f, 0.012f, s.k ? spark : lime, 1.2f * (1.0f - s.life / s.max));
+    j++;
+  }
+}
+static const char _data_FX_MODE_PICKLE_FIZZ[] PROGMEM = "Pickle Jar Fizz@Fizz speed,Bubbles,Brine swirl,Sparkles,Tree wraps,Pop sparks,Dill,Shake;Pickle,Brine,Sparkle;;1;sx=100,ix=130,c1=110,c2=170,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Pickle Big Dill: the whole tree is one giant pickle. Dark green ridged skin, lighter bumps that
+ * glisten with white sparkles, juicy green and white sparkles everywhere, and every so often a CRUNCH:
+ * a bite flashes open showing pale pickle inside and a spray of sparkles rings out from it.
+ */
+struct FdDill { uint32_t last, nextCrunch; float tt, ph, ct, ch, ca; };
+
+void mode_pickle_dill(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdDill))) { mode_static(); return; }
+  FdDill* st = reinterpret_cast<FdDill*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdDill)); st->last = strip.now; st->ct = 99.0f; st->nextCrunch = strip.now + 5000; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t skin = fdOr(SEGCOLOR(0), 0x188018), bump = xmOr(SEGCOLOR(1), 0x70D030), spark = xmOr(SEGCOLOR(2), WHITE);
+  const uint32_t lime = hwMix(skin, 0x80FF40, 0.6f);
+  if (SEGMENT.check1) { st->ph += dts * SEGMENT.speed / 255.0f * 0.1f; if (st->ph > 1000.0f) st->ph -= 1000.0f; }
+  if (SEGMENT.check3 && strip.now >= st->nextCrunch) {
+    st->ct = 0.0f; st->ch = 0.2f + 0.6f * hwRand(); st->ca = hwRand() * HW_TAU; st->nextCrunch = strip.now + 8000 + hw_random16(6000);
+  }
+  st->ct += dts;
+  const int Mb = 8 + (SEGMENT.intensity * 24 + 127) / 255;   // bumps around
+  const float Vb = 8.0f + SEGMENT.intensity / 255.0f * 16.0f;
+  const float Rg = (float)(5 + (SEGMENT.custom1 * 14 + 127) / 255);
+  const float glis = SEGMENT.custom2 / 255.0f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N), azr = xmFrac(az + st->ph);
+    const float rid = 0.5f + 0.5f * cos_approx(HW_TAU * azr * Rg);
+    const float mot = fdNoiseP(azr * 6.0f, h * 5.0f, 6);
+    uint32_t col = hwColor(hwMix(0x0A4010, skin, 0.4f + 0.6f * mot), 0.35f + 0.25f * rid);
+    // bumps
+    const float u = azr * Mb, v = h * Vb;
+    const int iu = ((int)floorf(u)) % Mb, iv = (int)floorf(v);
+    if (hwHash2(iu, iv + 500) > 0.4f) {
+      const float cx = 0.3f + 0.4f * hwHash2(iu, iv + 900), cy = 0.3f + 0.4f * hwHash2(iu + 77, iv);
+      const float dx = (u - floorf(u) - cx), dy = (v - floorf(v) - cy) * 1.4f;
+      const float r = sqrtf(dx * dx + dy * dy) / 0.32f;
+      if (r < 1.0f) {
+        col = hwMix(col, hwColor(bump, 0.75f), hwSmooth((1.0f - r) / 0.4f));
+        if (glis > 0.0f && r < 0.5f) { const float g = xmTwinkle(iu * 131 + iv, tt * (0.5f + glis), 2.0f * glis, 7); if (g > 0.0f) col = color_add(col, hwColor(spark, g)); }
+      }
+    }
+    if (SEGMENT.check2) {
+      float g = xmTwinkle(i, tt, 1.3f, 89); if (g > 0.0f) col = color_add(col, hwColor(lime, 1.2f * g));
+      g = xmTwinkle(i, tt * 1.3f, 1.1f, 97); if (g > 0.0f) col = color_add(col, hwColor(spark, g));
+    }
+    // crunch
+    if (st->ct < 4.0f) {
+      const float d = fdDist(h, N, st->ch, st->ca);
+      const float bite = hwSmooth((0.09f - d) / 0.02f) * (1.0f - hwSmooth((st->ct - 2.5f) / 1.5f));
+      if (bite > 0.0f) {
+        uint32_t flesh = hwColor(0xD8F0A0, 0.6f);
+        if (hwHash2(i, 101) > 0.8f) flesh = hwColor(0xFFFFE0, 0.9f);  // seeds
+        col = hwMix(col, flesh, bite);
+      }
+      const float rr = st->ct * 0.5f, ring = fabsf(d - rr);
+      if (ring < 0.07f && st->ct < 1.8f) {
+        const float g = xmTwinkle(i, tt * 3.0f, 6.0f, 103);
+        if (g > 0.0f) col = color_add(col, hwColor((i & 1) ? spark : lime, g * (1.0f - st->ct / 1.8f) * 1.5f));
+      }
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+}
+static const char _data_FX_MODE_PICKLE_DILL[] PROGMEM = "Pickle Big Dill@Turn speed,Bumps,Ridges,Glisten,Tree wraps,Turn,Juicy sparkles,Crunch;Skin,Bumps,Sparkle;;1;sx=60,ix=120,c1=100,c2=170,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Pickle Sparkle Storm: pure green and white glitter. Dense twinkles fill the tree in spiraling waves,
+ * glitter rains down from the top, and every few seconds the whole tree flashes in a white-out of sparkles.
+ */
+struct FdStorm { uint32_t last, nextFlash; float tt, acc, flash; uint8_t n; FdP f[90]; };
+
+void mode_pickle_storm(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdStorm))) { mode_static(); return; }
+  FdStorm* st = reinterpret_cast<FdStorm*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdStorm)); st->last = strip.now; st->nextFlash = strip.now + 6000; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t green = fdOr(SEGCOLOR(0), 0x30FF30), white = xmOr(SEGCOLOR(1), WHITE), base = xmOr(SEGCOLOR(2), 0x00380A);
+  const float sp = 0.4f + SEGMENT.speed / 255.0f * 2.0f;
+  if (SEGMENT.check3 && strip.now >= st->nextFlash) { st->flash = 0.8f; st->nextFlash = strip.now + 6000 + hw_random16(7000); }
+  if (st->flash > 0.0f) st->flash -= dts;
+  const float fl = st->flash > 0.0f ? st->flash / 0.8f : 0.0f;
+  const float dens = 0.3f + SEGMENT.intensity / 255.0f * 3.5f;
+  const float baseK = SEGMENT.custom2 / 255.0f * 0.5f;
+
+  if (SEGMENT.check2) {
+    st->acc += dts * (10.0f + SEGMENT.intensity / 255.0f * 50.0f);
+    while (st->acc >= 1.0f) {
+      st->acc -= 1.0f;
+      if (st->n >= 90) { st->acc = 0.0f; break; }
+      FdP& p = st->f[st->n++];
+      p.h = 1.02f; p.a = hwRand() * HW_TAU; p.vh = -(0.15f + SEGMENT.custom1 / 255.0f * 0.6f) * (0.7f + 0.6f * hwRand());
+      p.va = (hwRand() - 0.5f) * 0.8f; p.life = hwRand() * 6.0f; p.k = hw_random8() & 1;
+    }
+  }
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    uint32_t col = hwColor(base, baseK * (0.6f + 0.4f * fdNoiseP(az * 4.0f, h * 4.0f + tt * 0.2f, 4)));
+    float d = dens;
+    if (SEGMENT.check1) d *= 0.3f + 0.7f * (0.5f + 0.5f * sin_approx(HW_TAU * (h * 2.0f - tt * 0.2f * sp + az)));
+    d += fl * 6.0f;
+    float g = xmTwinkle(i, tt * sp, d, 11); if (g > 0.0f) col = color_add(col, hwColor(green, g));
+    g = xmTwinkle(i, tt * sp * 1.3f, d * (0.8f + fl), 23); if (g > 0.0f) col = color_add(col, hwColor(white, g));
+    if (fl > 0.0f) col = color_add(col, hwColor(green, 0.25f * fl));
+    SEGMENT.setPixelColor(i, col);
+  }
+  for (int j = 0; j < st->n; ) {
+    FdP& p = st->f[j];
+    p.h += p.vh * dts; p.a += p.va * dts; p.life += dts;
+    if (p.h < -0.02f) { st->f[j] = st->f[--st->n]; continue; }
+    hwBlob(len, N, p.h, p.a, 0.008f, 0.012f, p.k ? white : green, 0.6f + 0.6f * fabsf(sin_approx(p.life * 9.0f)));
+    j++;
+  }
+}
+static const char _data_FX_MODE_PICKLE_STORM[] PROGMEM = "Pickle Sparkle Storm@Twinkle speed,Density,Glitter fall speed,Base glow,Tree wraps,Density waves,Falling glitter,White flashes;Green sparkle,White sparkle,Base;;1;sx=110,ix=150,c1=110,c2=130,c3=12,o1=1,o2=1,o3=1";
+
+/*
+ * Pickle Hunt: the old tradition of hiding a pickle ornament in the tree. A glowing pickle peeks out
+ * somewhere in the dark green tree while a searchlight hunts for it. When the light finds it, it
+ * explodes into a fountain of green and white sparkles, the tree flashes, and the pickle hides again.
+ */
+struct FdHunt { uint32_t last; float tt, sa, hideT, foundT, ph, pa; uint8_t state, n; FdP p[80]; };
+
+void mode_pickle_hunt(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(FdHunt))) { mode_static(); return; }
+  FdHunt* st = reinterpret_cast<FdHunt*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(FdHunt)); st->last = strip.now; st->ph = 0.5f; st->pa = 1.0f; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t pick = fdOr(SEGCOLOR(0), 0x70FF20), tree = xmOr(SEGCOLOR(1), 0x004418), spark = xmOr(SEGCOLOR(2), WHITE);
+  const float sp = 0.4f + SEGMENT.speed / 255.0f * 1.6f;
+  const float hideMin = 3.0f + SEGMENT.intensity / 255.0f * 15.0f;
+  const float sz = 0.6f + SEGMENT.custom1 / 255.0f * 1.2f;
+  st->sa += dts * 0.15f * sp; if (st->sa > 1000.0f) st->sa -= 1000.0f;
+  const float sh = 0.5f + 0.38f * sin_approx(tt * 0.37f * sp);
+  const float saA = HW_TAU * st->sa;
+
+  if (st->state == 0) {
+    st->hideT += dts;
+    bool found = false;
+    if (st->hideT > hideMin) {
+      if (!SEGMENT.check1) found = true;
+      else { const float dh = sh - st->ph, da = fabsf(hwAngDiff(saA, st->pa)) * fdRad(st->ph); found = (dh * dh + da * da) < 0.007f; }
+      if (st->hideT > hideMin + 25.0f) found = true;  // never get stuck
+    }
+    if (found) {
+      st->state = 1; st->foundT = 0.0f;
+      const int cnt = SEGMENT.check3 ? 80 : 25;
+      st->n = 0;
+      for (int k = 0; k < cnt; k++) {
+        FdP& p = st->p[st->n++];
+        const float th = hwRand() * HW_TAU, v = 0.08f + 0.3f * hwRand();
+        p.h = st->ph; p.a = st->pa; p.vh = v * cos_approx(th) + 0.05f; p.va = v * sin_approx(th); p.life = 0.0f; p.max = 1.2f + 1.3f * hwRand(); p.k = k & 1;
+      }
+    }
+  } else {
+    st->foundT += dts;
+    if (st->foundT > 3.0f) { st->state = 0; st->hideT = 0.0f; st->ph = 0.15f + 0.7f * hwRand(); st->pa = hwRand() * HW_TAU; }
+  }
+  const float flash = (st->state == 1 && SEGMENT.check3) ? expf(-st->foundT * 2.0f) : 0.0f;
+  const float amb = SEGMENT.custom2 / 255.0f * 1.5f;
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    uint32_t col = hwColor(tree, 0.5f + 0.4f * fdNoiseP(az * 8.0f, h * 10.0f + tt * 0.05f, 8));
+    if (SEGMENT.check2 && amb > 0.0f) {
+      float g = xmTwinkle(i, tt, amb, 107); if (g > 0.0f) col = color_add(col, hwColor(hwMix(pick, tree, 0.3f), g));
+      g = xmTwinkle(i, tt * 1.2f, amb * 0.6f, 109); if (g > 0.0f) col = color_add(col, hwColor(spark, g * 0.8f));
+    }
+    if (flash > 0.0f) {
+      col = color_add(col, hwColor(pick, 0.5f * flash));
+      const float g = xmTwinkle(i, tt * 3.0f, 6.0f * flash, 113); if (g > 0.0f) col = color_add(col, hwColor(spark, g));
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+  if (SEGMENT.check1 && st->state == 0) hwBlob(len, N, sh, saA, 0.09f, 0.09f, 0xFFF0C0, 0.4f);
+  // the pickle: peeks in, glows brighter when found
+  const float pk = st->state == 0 ? hwSmooth(st->hideT / 1.5f) * (0.55f + 0.15f * sin_approx(tt * 2.0f)) : 1.0f + 0.6f * flash;
+  if (st->state == 0 || st->foundT < 1.0f) {
+    const float k = st->state == 0 ? pk : pk * (1.0f - st->foundT);
+    hwBlob(len, N, st->ph, st->pa, 0.045f * sz, 0.02f * sz, pick, k);
+    hwBlob(len, N, st->ph + 0.015f * sz, st->pa, 0.01f, 0.01f, spark, 0.5f * k * (0.5f + 0.5f * sin_approx(tt * 5.0f)));
+  }
+  for (int j = 0; j < st->n; ) {
+    FdP& p = st->p[j];
+    p.life += dts; if (p.life >= p.max || st->state == 0) { st->p[j] = st->p[--st->n]; continue; }
+    p.vh -= 0.12f * dts;
+    p.h += p.vh * dts;
+    p.a += p.va / max(fdRad(hwClamp01(p.h)), 0.06f) * dts;
+    const float k = (1.0f - p.life / p.max) * (0.6f + 0.4f * sin_approx(p.life * 25.0f + j));
+    hwBlob(len, N, p.h, p.a, 0.009f, 0.013f, p.k ? spark : pick, 1.3f * k);
+    j++;
+  }
+}
+static const char _data_FX_MODE_PICKLE_HUNT[] PROGMEM = "Pickle Hunt@Search speed,Hide time,Pickle size,Ambient sparkle,Tree wraps,Searchlight,Ambient sparkles,Celebration;Pickle,Tree,Sparkle;;1;sx=90,ix=60,c1=120,c2=110,c3=12,o1=1,o2=1,o3=1";
+// AI: end
+
 void WS2812FX::setupEffectData() {
   // Solid must be first! (assuming vector is empty upon call to setup)
   _mode.push_back(&mode_static);
@@ -12330,6 +13062,18 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_XMAS_DRESSED, &mode_xmas_dressed, _data_FX_MODE_XMAS_DRESSED);
   addEffect(FX_MODE_XMAS_FROST, &mode_xmas_frost, _data_FX_MODE_XMAS_FROST);
   addEffect(FX_MODE_XMAS_LIGHTSHOW, &mode_xmas_lightshow, _data_FX_MODE_XMAS_LIGHTSHOW);
+  addEffect(FX_MODE_EGG_PLATTER, &mode_egg_platter, _data_FX_MODE_EGG_PLATTER);
+  addEffect(FX_MODE_EGG_PIPING, &mode_egg_piping, _data_FX_MODE_EGG_PIPING);
+  addEffect(FX_MODE_EGG_PAPRIKA, &mode_egg_paprika, _data_FX_MODE_EGG_PAPRIKA);
+  addEffect(FX_MODE_EGG_HATCH, &mode_egg_hatch, _data_FX_MODE_EGG_HATCH);
+  addEffect(FX_MODE_SAX_BRASS, &mode_sax_brass, _data_FX_MODE_SAX_BRASS);
+  addEffect(FX_MODE_SAX_WAVES, &mode_sax_waves, _data_FX_MODE_SAX_WAVES);
+  addEffect(FX_MODE_SAX_CLUB, &mode_sax_club, _data_FX_MODE_SAX_CLUB);
+  addEffect(FX_MODE_SAX_RIFF, &mode_sax_riff, _data_FX_MODE_SAX_RIFF);
+  addEffect(FX_MODE_PICKLE_FIZZ, &mode_pickle_fizz, _data_FX_MODE_PICKLE_FIZZ);
+  addEffect(FX_MODE_PICKLE_DILL, &mode_pickle_dill, _data_FX_MODE_PICKLE_DILL);
+  addEffect(FX_MODE_PICKLE_STORM, &mode_pickle_storm, _data_FX_MODE_PICKLE_STORM);
+  addEffect(FX_MODE_PICKLE_HUNT, &mode_pickle_hunt, _data_FX_MODE_PICKLE_HUNT);
 
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);
