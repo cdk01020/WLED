@@ -379,7 +379,14 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_HALLOWEEN_HAUNTED_EYES 224
 #define FX_MODE_HALLOWEEN_SPIDERS      225
 #define FX_MODE_HALLOWEEN_HEART        226
-#define MODE_COUNT                     227
+#define FX_MODE_XMAS_CANDYCANE           227
+#define FX_MODE_XMAS_SNOWMAN             228
+#define FX_MODE_XMAS_SANTA               229
+#define FX_MODE_XMAS_STAR                230
+#define FX_MODE_XMAS_GARLAND             231
+#define FX_MODE_XMAS_RETRO               232
+#define FX_MODE_XMAS_SNOWGLOBE           233
+#define MODE_COUNT                     234
 
 
 #define TRANSITION_FADE            0x00  // universal
