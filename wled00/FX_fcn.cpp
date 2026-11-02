@@ -612,6 +612,17 @@ Segment &Segment::setMode(uint8_t fx, bool loadDefaults) {
       sOpt = extractModeDefaults(fx, "mi");  if (sOpt >= 0) mirror    = (bool)sOpt; // NOTE: setting this option is a risky business
       sOpt = extractModeDefaults(fx, "rY");  if (sOpt >= 0) reverse_y = (bool)sOpt;
       sOpt = extractModeDefaults(fx, "mY");  if (sOpt >= 0) mirror_y  = (bool)sOpt; // NOTE: setting this option is a risky business
+      // custom effects may also carry their intended colors as k0=RRGGBB,k1=...,k2=... (hex) in the defaults
+      {
+        char lb[384];
+        strncpy_P(lb, strip.getModeData(fx), sizeof(lb) - 1); lb[sizeof(lb) - 1] = '\0';
+        const char* defs = strrchr(lb, ';');
+        if (defs) for (unsigned k = 0; k < NUM_COLORS; k++) {
+          const char key[4] = { 'k', (char)('0' + k), '=', '\0' };
+          const char* p = strstr(defs, key);
+          if (p) setColor(k, (uint32_t)strtoul(p + 3, nullptr, 16));
+        }
+      }
     }
     sOpt = extractModeDefaults(fx, "pal"); // always extract 'pal' to set _default_palette
     if (sOpt >= 0 && loadDefaults) setPalette(sOpt);
