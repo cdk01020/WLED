@@ -12381,7 +12381,7 @@ void mode_egg_platter(void) {
     SEGMENT.setPixelColor(i, c);
   }
 }
-static const char _data_FX_MODE_EGG_PLATTER[] PROGMEM = "Deviled Egg Platter@Spin speed,Eggs around,Rows,Paprika,Tree wraps,Spin,Chives,Shimmer;Yolk,Egg white,Paprika;;1;sx=80,ix=110,c1=100,c2=120,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_EGG_PLATTER[] PROGMEM = "Fun Day Deviled Egg Platter@Spin speed,Eggs around,Rows,Paprika,Tree wraps,Spin,Chives,Shimmer;Yolk,Egg white,Paprika;;1;sx=80,ix=110,c1=100,c2=120,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Deviled Egg Piping: a piping bag swirls yolk filling up the strand from the bottom with flowing
@@ -12427,7 +12427,7 @@ void mode_egg_piping(void) {
     SEGMENT.setPixelColor(i, c);
   }
 }
-static const char _data_FX_MODE_EGG_PIPING[] PROGMEM = "Deviled Egg Piping@Swirl speed,Fill speed,Ridges,Paprika,,Repeat,Paprika dust,Gloss;Yolk,Egg white,Paprika;;1;sx=110,ix=140,c1=110,c2=140,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_EGG_PIPING[] PROGMEM = "Fun Day Deviled Egg Piping@Swirl speed,Fill speed,Ridges,Paprika,,Repeat,Paprika dust,Gloss;Yolk,Egg white,Paprika;;1;sx=110,ix=140,c1=110,c2=140,o1=1,o2=1,o3=1";
 
 /*
  * Deviled Egg Paprika Dust: the tree is one big deviled egg, a band of swirling yolk filling inside
@@ -12497,7 +12497,7 @@ void mode_egg_paprika(void) {
     j++;
   }
 }
-static const char _data_FX_MODE_EGG_PAPRIKA[] PROGMEM = "Deviled Egg Paprika Dust@Fall speed,Dust amount,Filling swirl,Settle time,Tree wraps,Sneeze gusts,Chives,Glints;Filling,Paprika,Chives;;1;sx=90,ix=120,c1=90,c2=170,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_EGG_PAPRIKA[] PROGMEM = "Fun Day Deviled Egg Paprika Dust@Fall speed,Dust amount,Filling swirl,Settle time,Tree wraps,Sneeze gusts,Chives,Glints;Filling,Paprika,Chives;;1;sx=90,ix=120,c1=90,c2=170,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Deviled Egg Hatch: a smooth glowing egg shell covers the tree, golden cracks of light spread across it,
@@ -12549,7 +12549,7 @@ void mode_egg_hatch(void) {
     SEGMENT.setPixelColor(i, c);
   }
 }
-static const char _data_FX_MODE_EGG_HATCH[] PROGMEM = "Deviled Egg Hatch@Speed,Cracks,Crack width,Yolk glow,Tree wraps,Sparkle burst,Wobble,Repeat;Yolk,Shell,Crack light;;1;sx=90,ix=110,c1=100,c2=150,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_EGG_HATCH[] PROGMEM = "Fun Day Deviled Egg Hatch@Speed,Cracks,Crack width,Yolk glow,Tree wraps,Sparkle burst,Wobble,Repeat;Yolk,Shell,Crack light;;1;sx=90,ix=110,c1=100,c2=150,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Saxophone Brass Shine: the tree is a gleaming brass horn. A specular highlight sweeps around it,
@@ -12597,7 +12597,7 @@ void mode_sax_brass(void) {
     else      hwBlob(len, N, hk, ak, 0.018f, 0.03f, pad, 0.75f);
   }
 }
-static const char _data_FX_MODE_SAX_BRASS[] PROGMEM = "Saxophone Brass Shine@Shine speed,Keys,Engraving,Bell glow,Tree wraps,Key presses,Glints,Reverse;Brass,Shine,Key pads;;1;sx=90,ix=140,c1=110,c2=150,c3=12,o1=1,o2=1";
+static const char _data_FX_MODE_SAX_BRASS[] PROGMEM = "Fun Day Saxophone Brass Shine@Shine speed,Keys,Engraving,Bell glow,Tree wraps,Key presses,Glints,Reverse;Brass,Shine,Key pads;;1;sx=90,ix=140,c1=110,c2=150,c3=12,o1=1,o2=1";
 
 /*
  * Saxophone Sound Waves: notes blow out of the bell at the bottom on a swinging jazz rhythm. Each note
@@ -12654,7 +12654,7 @@ void mode_sax_waves(void) {
     SEGMENT.setPixelColor(i, col);
   }
 }
-static const char _data_FX_MODE_SAX_WAVES[] PROGMEM = "Saxophone Sound Waves@Tempo,Busy,Wave width,Background,Tree wraps,Swing,Sparkle trails,From top;Wave 1,Wave 2,Wave 3;;1;sx=90,ix=140,c1=110,c2=90,c3=12,o1=1,o2=1";
+static const char _data_FX_MODE_SAX_WAVES[] PROGMEM = "Fun Day Saxophone Sound Waves@Tempo,Busy,Wave width,Background,Tree wraps,Swing,Sparkle trails,From top;Wave 1,Wave 2,Wave 3;;1;sx=90,ix=140,c1=110,c2=90,c3=12,o1=1,o2=1";
 
 /*
  * Saxophone Jazz Club: a smoky late-night club. Slow purple and blue smoke curls up the tree,
@@ -12696,7 +12696,7 @@ void mode_sax_club(void) {
     SEGMENT.setPixelColor(i, col);
   }
 }
-static const char _data_FX_MODE_SAX_CLUB[] PROGMEM = "Saxophone Jazz Club@Smoke drift,Spotlight size,Smoke density,Haze,Tree wraps,Spotlight moves,Brass glints,Applause;Spotlight,Smoke 1,Smoke 2;;1;sx=70,ix=120,c1=150,c2=130,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_SAX_CLUB[] PROGMEM = "Fun Day Saxophone Jazz Club@Smoke drift,Spotlight size,Smoke density,Haze,Tree wraps,Spotlight moves,Brass glints,Applause;Spotlight,Smoke 1,Smoke 2;;1;sx=70,ix=120,c1=150,c2=130,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Saxophone Solo Riff: a sax solo drawn on the tree. A bright note bobs up and down a pentatonic scale
@@ -12769,7 +12769,7 @@ void mode_sax_riff(void) {
   }
   if (!st->rest) hwBlob(len, N, st->cur + vib, hd * HW_TAU, th * 1.3f, 0.03f, hwMix(c[0], WHITE, 0.5f), 1.0f);
 }
-static const char _data_FX_MODE_SAX_RIFF[] PROGMEM = "Saxophone Solo Riff@Tempo,Trail length,Line thickness,Background,Tree wraps,Vibrato,Staff lines,Note sparkles;Low notes,Mid notes,High notes;;1;sx=90,ix=140,c1=120,c2=120,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_SAX_RIFF[] PROGMEM = "Fun Day Saxophone Solo Riff@Tempo,Trail length,Line thickness,Background,Tree wraps,Vibrato,Staff lines,Note sparkles;Low notes,Mid notes,High notes;;1;sx=90,ix=140,c1=120,c2=120,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Pickle Jar Fizz: the tree is a jar of pickles in swirling brine. Fizzy bubbles rise and pop into
@@ -12835,7 +12835,7 @@ void mode_pickle_fizz(void) {
     j++;
   }
 }
-static const char _data_FX_MODE_PICKLE_FIZZ[] PROGMEM = "Pickle Jar Fizz@Fizz speed,Bubbles,Brine swirl,Sparkles,Tree wraps,Pop sparks,Dill,Shake;Pickle,Brine,Sparkle;;1;sx=100,ix=130,c1=110,c2=170,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_PICKLE_FIZZ[] PROGMEM = "Fun Day Pickle Jar Fizz@Fizz speed,Bubbles,Brine swirl,Sparkles,Tree wraps,Pop sparks,Dill,Shake;Pickle,Brine,Sparkle;;1;sx=100,ix=130,c1=110,c2=170,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Pickle Big Dill: the whole tree is one giant pickle. Dark green ridged skin, lighter bumps that
@@ -12902,7 +12902,7 @@ void mode_pickle_dill(void) {
     SEGMENT.setPixelColor(i, col);
   }
 }
-static const char _data_FX_MODE_PICKLE_DILL[] PROGMEM = "Pickle Big Dill@Turn speed,Bumps,Ridges,Glisten,Tree wraps,Turn,Juicy sparkles,Crunch;Skin,Bumps,Sparkle;;1;sx=60,ix=120,c1=100,c2=170,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_PICKLE_DILL[] PROGMEM = "Fun Day Pickle Big Dill@Turn speed,Bumps,Ridges,Glisten,Tree wraps,Turn,Juicy sparkles,Crunch;Skin,Bumps,Sparkle;;1;sx=60,ix=120,c1=100,c2=170,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Pickle Sparkle Storm: pure green and white glitter. Dense twinkles fill the tree in spiraling waves,
@@ -12954,7 +12954,7 @@ void mode_pickle_storm(void) {
     j++;
   }
 }
-static const char _data_FX_MODE_PICKLE_STORM[] PROGMEM = "Pickle Sparkle Storm@Twinkle speed,Density,Glitter fall speed,Base glow,Tree wraps,Density waves,Falling glitter,White flashes;Green sparkle,White sparkle,Base;;1;sx=110,ix=150,c1=110,c2=130,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_PICKLE_STORM[] PROGMEM = "Fun Day Pickle Sparkle Storm@Twinkle speed,Density,Glitter fall speed,Base glow,Tree wraps,Density waves,Falling glitter,White flashes;Green sparkle,White sparkle,Base;;1;sx=110,ix=150,c1=110,c2=130,c3=12,o1=1,o2=1,o3=1";
 
 /*
  * Pickle Hunt: the old tradition of hiding a pickle ornament in the tree. A glowing pickle peeks out
@@ -13034,7 +13034,7 @@ void mode_pickle_hunt(void) {
     j++;
   }
 }
-static const char _data_FX_MODE_PICKLE_HUNT[] PROGMEM = "Pickle Hunt@Search speed,Hide time,Pickle size,Ambient sparkle,Tree wraps,Searchlight,Ambient sparkles,Celebration;Pickle,Tree,Sparkle;;1;sx=90,ix=60,c1=120,c2=110,c3=12,o1=1,o2=1,o3=1";
+static const char _data_FX_MODE_PICKLE_HUNT[] PROGMEM = "Fun Day Pickle Hunt@Search speed,Hide time,Pickle size,Ambient sparkle,Tree wraps,Searchlight,Ambient sparkles,Celebration;Pickle,Tree,Sparkle;;1;sx=90,ix=60,c1=120,c2=110,c3=12,o1=1,o2=1,o3=1";
 // AI: end
 
 void WS2812FX::setupEffectData() {
