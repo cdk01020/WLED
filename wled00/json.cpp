@@ -1253,24 +1253,27 @@ static size_t writeJSONStringElement(uint8_t* dest, size_t maxLen, const char* s
 // allows us to send an arbitrarily large response without using any significant amount of
 // memory (so no worries about buffer limits).
 void respondModeData(AsyncWebServerRequest* request) {
-  size_t fx_index = 0;
+  // Streams the effect data array. Each entry may be split across packets (fx_index + offset into the
+  // current entry are kept between calls), so a long entry can never stall or cut off the response.
+  size_t fx_index = 0, offset = 0;
   request->sendChunked(FPSTR(CONTENT_TYPE_JSON),
-    [fx_index](uint8_t* data, size_t len, size_t) mutable {
+    [fx_index, offset](uint8_t* data, size_t len, size_t) mutable {
       size_t bytes_written = 0;
       char lineBuffer[256];
-      while (fx_index < strip.getModeCount()) {
+      uint8_t element[2 * sizeof(lineBuffer) + 8];  // worst case: every char escaped, plus ',' and quotes
+      while (len > 0 && fx_index < strip.getModeCount()) {
         strncpy_P(lineBuffer, strip.getModeData(fx_index), sizeof(lineBuffer)-1); // Copy to stack buffer for strchr
-        if (lineBuffer[0] != 0) {
-          lineBuffer[sizeof(lineBuffer)-1] = '\0'; // terminate string (only needed if strncpy filled the buffer)
-          const char* dataPtr = strchr(lineBuffer,'@'); // Find '@', if there is one
-          size_t mode_bytes = writeJSONStringElement(data, len, dataPtr ? dataPtr + 1 : "");
-          if (mode_bytes == 0) break;  // didn't fit; break loop and try again next packet
-          if (fx_index == 0) *data = '[';
-          data += mode_bytes;
-          len -= mode_bytes;
-          bytes_written += mode_bytes;
-        }
-        ++fx_index;        
+        lineBuffer[sizeof(lineBuffer)-1] = '\0';
+        if (lineBuffer[0] == 0) { ++fx_index; offset = 0; continue; }
+        const char* dataPtr = strchr(lineBuffer,'@'); // Find '@', if there is one
+        size_t n = writeJSONStringElement(element, sizeof(element), dataPtr ? dataPtr + 1 : "");
+        if (n == 0) { element[0] = ','; element[1] = '"'; element[2] = '"'; n = 3; } // cannot happen; keep JSON valid
+        if (fx_index == 0) element[0] = '[';
+        size_t take = n - offset;
+        if (take > len) take = len;
+        memcpy(data, element + offset, take);
+        data += take; len -= take; bytes_written += take; offset += take;
+        if (offset >= n) { ++fx_index; offset = 0; }
       }
 
       if ((fx_index == strip.getModeCount()) && (len >= 1)) {
