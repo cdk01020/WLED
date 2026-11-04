@@ -398,7 +398,8 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_PICKLE_DILL              243
 #define FX_MODE_PICKLE_STORM             244
 #define FX_MODE_PICKLE_HUNT              245
-#define MODE_COUNT                     246
+#define FX_MODE_TREE_MAPPER              246
+#define MODE_COUNT                     247
 
 
 #define TRANSITION_FADE            0x00  // universal
