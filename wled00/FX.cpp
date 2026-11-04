@@ -11253,29 +11253,50 @@ void mode_chase_firework_fill(void) {
 
     case CFF_PH_HOLD:
     case CFF_PH_FADE: {
-      // level: full during hold; during the fade it eases out (quadratic) to exactly 0
-      uint8_t level = 255;
-      uint8_t sparkStrength = 0;  // 0..255, how frequent/strong new sparkles are
-      if (phase == CFF_PH_FADE) {
-        const uint8_t t = (phaseTime >= CFF_FADE_MS) ? 255 : (phaseTime * 255) / CFF_FADE_MS;
-        level = ((255 - t) * (255 - t)) / 255;
-        if (SEGMENT.check2) sparkStrength = 255 - t;
+      // Hold: full strand with very sparse twinkles.
+      // Fade with "Sparkle fade" on: every pixel goes out on its own at a random moment within the fade,
+      //   flashing white-hot and then cooling to black, so the strand empties out randomly.
+      // Fade with "Sparkle fade" off: the whole strand eases out smoothly together.
+      const bool fading = (phase == CFF_PH_FADE);
+      const bool sparkleOut = fading && SEGMENT.check2;
+      const uint32_t pxOutMs = 700;                          // how long one pixel takes to flash and go dark
+      const uint32_t window  = CFF_FADE_MS - pxOutMs;        // pixels start going out anywhere in this window
+      uint16_t level16 = 65535;                              // smooth whole-strand level (sparkle fade off)
+      if (fading && !sparkleOut) {
+        const uint32_t t = (phaseTime >= CFF_FADE_MS) ? 65535UL : (phaseTime * 65535UL) / CFF_FADE_MS;
+        level16 = (uint16_t)(((65535UL - t) * (65535UL - t)) >> 16);
       }
-      // new sparkles: very sparse during the hold, frequent at the start of the fade then fewer and weaker
-      uint16_t newSparks;
-      uint8_t newHeat;
-      if (phase == CFF_PH_HOLD) { newSparks = (hw_random8() < 64) ? 1 + len / 400 : 0; newHeat = 90; }
-      else { newSparks = ((uint32_t)len * sparkStrength * sparkStrength) / (255UL * 255UL * 150); newHeat = 80 + (sparkStrength * 175) / 255; }
-      for (uint16_t n = 0; n < newSparks; n++) cffSpark(spark, hw_random16(len), newHeat);
+
+      // a few gentle twinkles on pixels that are still lit
+      if (!fading || sparkleOut) {
+        if (hw_random8() < 64) for (uint16_t n = 0; n < 1 + len / 400; n++) cffSpark(spark, hw_random16(len), 90);
+      }
 
       for (uint16_t i = 0; i < len; i++) {
         const uint32_t base = (fill[i] == CFF_UNFILLED) ? colors[0] : colors[fill[i] % numColors];
-        uint32_t c = cffScale(base, level);
-        if (spark[i]) {
-          // a sparkle briefly lifts the pixel above the fading level and toward white
-          const uint8_t lift = (phase == CFF_PH_FADE) ? ((uint16_t)spark[i] * sparkStrength) / 255 : spark[i];
-          const uint8_t sl = max(level, lift);
-          c = cffScale(color_blend(base, WHITE, lift >> 1), sl);
+        uint32_t c;
+        if (sparkleOut) {
+          // stable random moment for this pixel (16-bit, so pixels don't go out in clumps)
+          const uint32_t r16 = ((uint32_t)cffHash(i + 3000, seed ^ 0x3C) << 8) | cffHash(i + 7000, seed ^ 0xC3);
+          const uint32_t outAt = (r16 * window) >> 16;
+          if (phaseTime < outAt) {
+            c = base;
+            if (spark[i]) c = color_blend(base, WHITE, spark[i] >> 1);
+          } else {
+            const uint32_t dt = phaseTime - outAt;
+            if (dt >= pxOutMs) c = BLACK;
+            else {
+              const uint32_t u = (dt * 255) / pxOutMs;                // 0..255 through this pixel's exit
+              const uint8_t heat = ((255 - u) * (255 - u)) / 255;      // white-hot that cools quickly
+              const uint8_t lvl  = (u < 25) ? 255 : heat;              // brief full-bright pop, then dims
+              c = cffScale(color_blend(base, WHITE, (heat * 3) >> 2), lvl);
+            }
+          }
+        } else {
+          c = (level16 == 65535) ? base
+              : RGBW32((R(base) * (uint32_t)level16) >> 16, (G(base) * (uint32_t)level16) >> 16,
+                       (B(base) * (uint32_t)level16) >> 16, (W(base) * (uint32_t)level16) >> 16);
+          if (!fading && spark[i]) c = color_blend(base, WHITE, spark[i] >> 1);
         }
         SEGMENT.setPixelColor(i, c);
         spark[i] = (spark[i] > 12) ? spark[i] - 12 : 0;
