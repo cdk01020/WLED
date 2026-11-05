@@ -12332,7 +12332,7 @@ static const char _data_FX_MODE_XMAS_LIGHTSHOW[] PROGMEM = "Christmas Light Show
  * Same tree geometry as the effects above (hwHeight, hwArc, hwBlob, ...): pixel 0 is the bottom,
  * "Tree wraps" (c3) is how many times the strand goes around the tree. Each effect steps through its
  * three colors; a color slot left black falls back to the effect's default color.
- * They use the freed sound-reactive IDs 128-137 so effect slots 247-254 stay open.
+ * They use the freed sound-reactive IDs 128-133 so effect slots 247-254 stay open.
  */
 // next color slot (0..2): in order, or at random but never the same one twice in a row
 static inline uint8_t xsNext(uint8_t cur, bool rnd) { return rnd ? (uint8_t)((cur + 1 + hw_random8(2)) % 3) : (uint8_t)((cur + 1) % 3); }
@@ -12342,13 +12342,6 @@ static inline float xsSpark(int i, float tt, float p, float rate, int32_t salt) 
   const float x = tt * rate + hwHash2(i, salt) * 16.0f;
   if (hwHash2(i, (int32_t)x + salt) < p) return sin_approx(xmFrac(x) * 3.14159f);
   return 0.0f;
-}
-// rainbow wheel 0..1 -> color (independent of the WLED palette)
-static uint32_t xsWheel(float x) {
-  x = xmFrac(x) * 3.0f;
-  const int s = (int)x; const float f = x - (float)s;
-  const uint8_t u = (uint8_t)(f * 255.0f), d = 255 - u;
-  return s == 0 ? RGBW32(d, u, 0, 0) : (s == 1 ? RGBW32(0, d, u, 0) : RGBW32(u, 0, d, 0));
 }
 // start new sparkles in a decaying sparkle buffer at perSec sparkles per second
 static inline void xsSpawn(uint8_t* g, uint16_t len, float& acc, float perSec, float dts) {
@@ -12393,47 +12386,6 @@ void mode_xmas_breath(void) {
 }
 static const char _data_FX_MODE_XMAS_BREATH[] PROGMEM = "Christmas Color Breath Glitter@Breath speed,Glitter,Hold,Sparkle fade,,White glitter,Dim between,Random order;Color 1,Color 2,Color 3;;1;sx=110,ix=130,c1=110,c2=100,o1=0,o2=1,o3=0,k0=FF0000,k1=00C000,k2=FFB000";
 
-/*
- * Christmas Flash Freeze: the tree holds one color, then a burst of white sparkles covers it. Each
- * sparkle fades at its own pace and reveals the next color underneath. Optional sweep from the top.
- */
-struct XsFreeze { uint32_t last; float tt, bt; uint16_t n; uint8_t idx, prev; };
-
-void mode_xmas_flashfreeze(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XsFreeze))) { mode_static(); return; }
-  XsFreeze* st = reinterpret_cast<XsFreeze*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(XsFreeze)); st->last = strip.now; st->prev = 2; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  uint32_t c[3]; xsColors(c, 0xFF0000, 0x00C000, 0x0050FF);
-
-  const float fadeDur = 0.5f + (255 - SEGMENT.custom1) / 255.0f * 4.5f;
-  const float sweep = SEGMENT.check2 ? 0.7f : 0.0f;
-  const float hold = max(1.5f + (255 - SEGMENT.speed) / 255.0f * 8.5f, fadeDur + sweep + 0.5f);
-  st->bt += dts;
-  if (st->bt >= hold) { st->bt = 0.0f; st->prev = st->idx; st->idx = xsNext(st->idx, SEGMENT.check1); st->n++; }
-  const float cover = 0.25f + SEGMENT.intensity / 255.0f * 0.75f;
-  const float amb = SEGMENT.custom2 / 255.0f;
-  const int32_t n = st->n;
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len);
-    const float t = st->bt - (sweep * (1.0f - h) + hwHash2(i, n + 7) * 0.08f);
-    uint32_t col;
-    if (t < 0.0f) col = hwColor(c[st->prev], 0.8f);
-    else {
-      col = hwColor(c[st->idx], 0.8f);
-      if (hwHash2(i, n) < cover) {
-        const float v = 1.0f - t / (fadeDur * (0.35f + 0.65f * hwHash2(i, n + 3)));
-        if (v > 0.0f) col = hwMix(col, WHITE, min(1.0f, v * 1.3f));
-      }
-      if (SEGMENT.check3 && t < 0.07f) col = WHITE;
-      if (amb > 0.0f && t > fadeDur) { const float s = xsSpark(i, tt, amb * 0.08f, 2.5f, 31); if (s > 0.0f) col = color_add(col, hwColor(WHITE, s * 0.8f)); }
-    }
-    SEGMENT.setPixelColor(i, col);
-  }
-}
-static const char _data_FX_MODE_XMAS_FLASHFREEZE[] PROGMEM = "Christmas Flash Freeze@Burst rate,Coverage,Reveal speed,Idle twinkles,,Random order,Sweep from top,Strobe flash;Color 1,Color 2,Color 3;;1;sx=110,ix=200,c1=130,c2=60,o1=0,o2=0,o3=1,k0=FF0000,k1=00C000,k2=0050FF";
 
 /*
  * Christmas Shimmer Wipe: each new color sweeps up (or down) the tree behind a dense band of sparkles,
@@ -12481,73 +12433,6 @@ void mode_xmas_shimmerwipe(void) {
 }
 static const char _data_FX_MODE_XMAS_SHIMMERWIPE[] PROGMEM = "Christmas Shimmer Wipe@Wipe speed,Edge sparkles,Edge width,Hold time,Tree wraps,Top down,Alternate direction,Spiral edge;Color 1,Color 2,Color 3;;1;sx=90,ix=200,c1=80,c2=80,c3=12,o1=0,o2=1,o3=0,k0=FF0000,k1=00C000,k2=FFB000";
 
-/*
- * Christmas Ornament Pop: a solid base color with round clusters that bloom bright in a contrasting
- * color like ornaments, sparkle for a moment, then melt back into the base. The base can cycle colors.
- */
-#define XS_POPS 20
-struct XsPop { float h, a, age, life; uint8_t ci, on; };
-struct XsPops { uint32_t last; float tt, acc, base; XsPop p[XS_POPS]; };
-
-void mode_xmas_ornamentpop(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XsPops))) { mode_static(); return; }
-  XsPops* st = reinterpret_cast<XsPops*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(XsPops)); st->last = strip.now; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  uint32_t c[3]; xsColors(c, 0x00A030, 0xFF0000, 0xFFB000);
-
-  int b0 = 0; uint32_t baseCol = c[0];
-  if (SEGMENT.check2) {
-    st->base += dts * (0.02f + SEGMENT.custom2 / 255.0f * 0.15f);
-    if (st->base >= 3.0f) st->base -= 3.0f;
-    b0 = (int)st->base % 3;
-    baseCol = hwMix(c[b0], c[(b0 + 1) % 3], hwSmooth((xmFrac(st->base) - 0.8f) / 0.2f));
-  }
-  const int maxPops = 1 + SEGMENT.intensity * (XS_POPS - 1) / 255;
-  st->acc += dts * (0.3f + SEGMENT.speed / 255.0f * 4.0f);
-  while (st->acc >= 1.0f) {
-    st->acc -= 1.0f;
-    for (int k = 0; k < maxPops; k++) {
-      XsPop& p = st->p[k];
-      if (p.on) continue;
-      p.h = hwHeight(hw_random16(len), len); p.a = HW_TAU * N * p.h;
-      p.age = 0.0f; p.life = 2.0f + hwRand() * 2.0f; p.on = 1;
-      p.ci = SEGMENT.check3 ? (uint8_t)((b0 + 1 + hw_random8(2)) % 3) : (uint8_t)((b0 + 1) % 3);
-      break;
-    }
-  }
-  const float hr = (0.45f + SEGMENT.custom1 / 255.0f * 1.1f) / N;
-  const float pr = 0.015f + SEGMENT.custom1 / 255.0f * 0.05f;
-
-  const uint32_t fill = hwColor(baseCol, 0.7f);
-  for (int i = 0; i < len; i++) SEGMENT.setPixelColor(i, fill);
-  for (int k = 0; k < XS_POPS; k++) {
-    XsPop& p = st->p[k];
-    if (!p.on) continue;
-    p.age += dts;
-    if (p.age >= p.life || k >= maxPops) { p.on = 0; continue; }
-    const float env = p.age < 0.3f ? hwSmooth(p.age / 0.3f) : (p.age > p.life - 1.0f ? hwSmooth(p.life - p.age) : 1.0f);
-    const uint32_t pc = hwColor(c[p.ci], 0.8f + 0.4f * max(0.0f, 1.0f - p.age / 0.4f));
-    const bool sparkle = SEGMENT.check1 && p.age > 0.2f && p.age < p.life - 0.6f;
-    int lo = (int)hwIndexAt(p.h - 2.2f * hr, len);
-    int hi = (int)ceilf(hwIndexAt(p.h + 2.2f * hr, len));
-    if (hi > len - 1) hi = len - 1;
-    for (int i = lo; i <= hi; i++) {
-      const float h = hwHeight(i, len);
-      const float da = hwArc(h, N, p.a) / pr;
-      if (da > 2.4f) continue;
-      const float dh = (h - p.h) / hr;
-      const float v = hwGauss(dh * dh + da * da) * env;
-      if (v < 0.01f) continue;
-      uint32_t col = hwMix(SEGMENT.getPixelColor(i), pc, min(1.0f, v * 1.4f));
-      if (sparkle) { const float s = xsSpark(i, tt, 0.35f, 4.0f, 50 + k); if (s > 0.0f) col = color_add(col, hwColor(WHITE, s * v)); }
-      SEGMENT.setPixelColor(i, col);
-    }
-  }
-}
-static const char _data_FX_MODE_XMAS_ORNAMENTPOP[] PROGMEM = "Christmas Ornament Pop@Pop rate,Max ornaments,Ornament size,Base color speed,Tree wraps,Pop sparkles,Base color cycle,Random pop colors;Base,Pop 1,Pop 2;;1;sx=110,ix=150,c1=110,c2=80,c3=12,o1=1,o2=0,o3=1,k0=00A030,k1=FF0000,k2=FFB000";
 
 /*
  * Christmas Twinkle Swap: the tree is one color; one pixel at a time sparkles and settles into the
@@ -12592,56 +12477,6 @@ void mode_xmas_twinkleswap(void) {
 }
 static const char _data_FX_MODE_XMAS_TWINKLESWAP[] PROGMEM = "Christmas Twinkle Swap@Swap speed,Hold time,Twinkle length,Idle twinkles,,Random order,Bottom to top,White hot;Color 1,Color 2,Color 3;;1;sx=120,ix=90,c1=90,c2=70,o1=0,o2=0,o3=1,k0=FF0000,k1=00C000,k2=2060FF";
 
-/*
- * Christmas Heartbeat Glow: the whole tree pulses in a lub-dub rhythm. Each beat throws a burst of
- * sparkles and an optional ring of light, and every few beats the color changes.
- */
-struct XsHeart { uint32_t last; float tt, bc, acc; uint32_t beats; uint8_t idx, prev, dub; };
-
-void mode_xmas_heartbeat(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XsHeart) + len)) { mode_static(); return; }
-  XsHeart* st = reinterpret_cast<XsHeart*>(SEGENV.data);
-  uint8_t* g = SEGENV.data + sizeof(XsHeart);
-  if (SEGENV.call == 0) { memset(SEGENV.data, 0, sizeof(XsHeart) + len); st->last = strip.now; st->beats = 0xFFFFFFFF; }
-  const float dts = hwFrame(st->last, st->tt);
-  uint32_t c[3]; xsColors(c, 0xFF0000, 0x00C000, 0xFFB000);
-
-  st->bc += dts * (40.0f + SEGMENT.speed / 255.0f * 100.0f) / 60.0f;
-  if (st->bc > 10000.0f) { st->bc -= 10000.0f; if (st->beats != 0xFFFFFFFF) st->beats -= 10000; }
-  const uint32_t beat = (uint32_t)st->bc;
-  const float x = st->bc - (float)beat;
-  const uint32_t perColor = 1 + SEGMENT.custom1 * 15 / 255;
-  const bool switchBeat = (beat % perColor) == 0;
-  const int burst = (int)(len * SEGMENT.intensity / 255.0f * 0.15f);
-  if (beat != st->beats) {  // lub
-    st->beats = beat; st->dub = 0;
-    for (int k = 0; k < burst; k++) g[hw_random16(len)] = 255;
-    if (switchBeat) { st->prev = st->idx; st->idx = xsNext(st->idx, SEGMENT.check2); }
-  }
-  if (!st->dub && x >= 0.28f) { st->dub = 1; for (int k = 0; k < burst * 6 / 10; k++) g[hw_random16(len)] = 220; }
-
-  float env = expf(-x * 12.0f) + (x >= 0.28f ? 0.7f * expf(-(x - 0.28f) * 12.0f) : 0.0f);
-  if (env > 1.0f) env = 1.0f;
-  const float floorGlow = SEGMENT.custom2 / 255.0f * 0.6f;
-  const float bright = floorGlow + (1.0f - floorGlow) * env;
-  const float m = (SEGMENT.check3 && switchBeat) ? hwSmooth(x / 0.35f) : 1.0f;
-  const uint32_t now = hwMix(c[st->prev], c[st->idx], m);
-  const uint32_t base = hwColor(now, 0.85f * bright);
-  const uint32_t ring = hwMix(now, WHITE, 0.5f);
-  const uint8_t cool = xsCool(dts, 2.5f);
-
-  for (int i = 0; i < len; i++) {
-    uint32_t col = base;
-    if (SEGMENT.check1) {
-      const float dd = (fabsf(hwHeight(i, len) - 0.5f) - x * 1.1f) / 0.04f;
-      if (dd > -3.0f && dd < 3.0f) col = color_add(col, hwColor(ring, 0.6f * hwGauss(dd * dd) * (1.0f - x)));
-    }
-    if (g[i]) { const float v = g[i] / 255.0f; col = color_add(col, hwColor(WHITE, v * v)); g[i] = g[i] > cool ? g[i] - cool : 0; }
-    SEGMENT.setPixelColor(i, col);
-  }
-}
-static const char _data_FX_MODE_XMAS_HEARTBEAT[] PROGMEM = "Christmas Heartbeat Glow@Heart rate,Burst sparkles,Beats per color,Glow floor,,Shockwave ring,Random order,Smooth color change;Color 1,Color 2,Color 3;;1;sx=60,ix=140,c1=40,c2=60,o1=1,o2=0,o3=1,k0=FF0000,k1=00C000,k2=FFB000";
 
 /*
  * Christmas Snow Globe: a deep base color that slowly shifts between two colors, with snowflakes
@@ -12748,65 +12583,6 @@ void mode_xmas_aurora(void) {
 }
 static const char _data_FX_MODE_XMAS_AURORA[] PROGMEM = "Christmas Aurora Wash@Drift speed,Stars,Bands,Contrast,Tree wraps,Reverse drift,Shooting stars,Curtain ripple;Aurora 1,Aurora 2,Aurora 3;;1;sx=70,ix=110,c1=100,c2=110,c3=12,o1=0,o2=1,o3=1,k0=20FF60,k1=00C0B0,k2=8020FF";
 
-/*
- * Christmas Show Stopper: a short finale that loops: solid flashes through the three colors, a
- * full-tree white sparkle storm, a rainbow sweep, then a fade to warm white that holds and shimmers.
- */
-struct XsStop { uint32_t last; float tt, t; uint8_t stage; };
-
-void mode_xmas_showstopper(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(XsStop))) { mode_static(); return; }
-  XsStop* st = reinterpret_cast<XsStop*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(XsStop)); st->last = strip.now; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  uint32_t c[3]; xsColors(c, 0xFF0000, 0x00C000, 0xFFB000);
-
-  const float k = 0.5f + SEGMENT.speed / 255.0f * 1.5f;
-  const int nfl = 2 + SEGMENT.intensity * 10 / 255;
-  const float dur[5] = { nfl * 0.5f / k, SEGMENT.check2 ? 3.0f / k : 0.0f, SEGMENT.check1 ? 3.5f / k : 0.0f, 1.5f / k, 2.0f + SEGMENT.custom2 / 255.0f * 18.0f };
-  if (st->stage > 4) st->stage = 0;
-  st->t += dts;
-  for (int g = 0; g < 6 && st->t >= dur[st->stage]; g++) { st->t -= dur[st->stage]; st->stage = (st->stage + 1) % 5; }
-  const float t = st->t;
-  const uint32_t warm = RGBW32(255, 150, 60, 0);
-  const uint32_t lastFlash = c[(nfl - 1) % 3];
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len);
-    uint32_t col = BLACK;
-    switch (st->stage) {
-      case 0: {  // flashes
-        const float bt = t * k / 0.5f; const int n = (int)bt; const float x = bt - (float)n;
-        const float env = expf(-x * 3.0f) * (x < 0.7f ? 1.0f : hwSmooth((1.0f - x) / 0.3f));
-        col = hwColor(c[n % 3], 0.9f * env);
-      } break;
-      case 1: {  // sparkle storm
-        const float p = t / dur[1];
-        col = hwColor(lastFlash, 0.5f * (1.0f - p));
-        const float s = xsSpark(i, tt, SEGMENT.custom1 / 255.0f * 0.5f * sin_approx(p * 3.14159f) + 0.05f, 8.0f, 91);
-        if (s > 0.0f) col = color_add(col, hwColor(WHITE, s));
-      } break;
-      case 2: {  // rainbow sweep
-        const float F = min(1.0f, t / dur[2] * 2.2f);
-        const float y = SEGMENT.check3 ? 1.0f - h : h;
-        if (y < F) col = hwColor(xsWheel(h * 1.2f - t * k * 0.4f), 0.85f);
-        if (F < 1.0f) { const float dd = (y - F) / 0.03f; col = color_add(col, hwColor(WHITE, 0.8f * hwGauss(dd * dd))); }
-      } break;
-      case 3: {  // fade to warm white
-        const uint32_t from = SEGMENT.check1 ? hwColor(xsWheel(h * 1.2f - (t + dur[2]) * k * 0.4f), 0.85f) : BLACK;
-        col = hwMix(from, hwColor(warm, 0.8f), hwSmooth(t / dur[3]));
-      } break;
-      default: {  // warm hold with a gentle shimmer
-        col = hwColor(warm, 0.8f * (0.9f + 0.1f * hwNoise(i * 0.2f, tt)));
-        const float s = xsSpark(i, tt, 0.02f, 1.5f, 93);
-        if (s > 0.0f) col = color_add(col, hwColor(WHITE, s * 0.5f));
-      } break;
-    }
-    SEGMENT.setPixelColor(i, col);
-  }
-}
-static const char _data_FX_MODE_XMAS_SHOWSTOPPER[] PROGMEM = "Christmas Show Stopper@Show speed,Flashes,Storm density,Warm hold,,Rainbow sweep,Sparkle storm,Sweep from top;Flash 1,Flash 2,Flash 3;;1;sx=110,ix=100,c1=200,c2=60,o1=1,o2=1,o3=0,k0=FF0000,k1=00C000,k2=FFB000";
 
 /*
  * Christmas Tinsel Shimmer: every pixel flickers in brightness on top of a slowly changing color,
@@ -13654,14 +13430,10 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_XMAS_FROST, &mode_xmas_frost, _data_FX_MODE_XMAS_FROST);
   addEffect(FX_MODE_XMAS_LIGHTSHOW, &mode_xmas_lightshow, _data_FX_MODE_XMAS_LIGHTSHOW);
   addEffect(FX_MODE_XMAS_BREATH, &mode_xmas_breath, _data_FX_MODE_XMAS_BREATH);
-  addEffect(FX_MODE_XMAS_FLASHFREEZE, &mode_xmas_flashfreeze, _data_FX_MODE_XMAS_FLASHFREEZE);
   addEffect(FX_MODE_XMAS_SHIMMERWIPE, &mode_xmas_shimmerwipe, _data_FX_MODE_XMAS_SHIMMERWIPE);
-  addEffect(FX_MODE_XMAS_ORNAMENTPOP, &mode_xmas_ornamentpop, _data_FX_MODE_XMAS_ORNAMENTPOP);
   addEffect(FX_MODE_XMAS_TWINKLESWAP, &mode_xmas_twinkleswap, _data_FX_MODE_XMAS_TWINKLESWAP);
-  addEffect(FX_MODE_XMAS_HEARTBEAT, &mode_xmas_heartbeat, _data_FX_MODE_XMAS_HEARTBEAT);
   addEffect(FX_MODE_XMAS_SNOWGLOBE, &mode_xmas_snowglobe, _data_FX_MODE_XMAS_SNOWGLOBE);
   addEffect(FX_MODE_XMAS_AURORA, &mode_xmas_aurora, _data_FX_MODE_XMAS_AURORA);
-  addEffect(FX_MODE_XMAS_SHOWSTOPPER, &mode_xmas_showstopper, _data_FX_MODE_XMAS_SHOWSTOPPER);
   addEffect(FX_MODE_XMAS_TINSEL, &mode_xmas_tinsel, _data_FX_MODE_XMAS_TINSEL);
   addEffect(FX_MODE_EGG_PLATTER, &mode_egg_platter, _data_FX_MODE_EGG_PLATTER);
   addEffect(FX_MODE_EGG_PIPING, &mode_egg_piping, _data_FX_MODE_EGG_PIPING);
