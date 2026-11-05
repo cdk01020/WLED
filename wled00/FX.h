@@ -277,16 +277,17 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_2DWAVINGCELL           127 //gap fill
 
 // WLED-SR effects (SR compatible IDs !!!)
-#define FX_MODE_PIXELS                 128
-#define FX_MODE_PIXELWAVE              129
-#define FX_MODE_JUGGLES                130
-#define FX_MODE_MATRIPIX               131
-#define FX_MODE_GRAVIMETER             132
-#define FX_MODE_PLASMOID               133
-#define FX_MODE_PUDDLES                134
-#define FX_MODE_MIDNOISE               135
-#define FX_MODE_NOISEMETER             136
-#define FX_MODE_FREQWAVE               137
+// 128-137 reused on this branch for the Christmas light show effects (the sound-reactive ones were removed)
+#define FX_MODE_XMAS_BREATH               128  // was Pixels (sound reactive, removed)
+#define FX_MODE_XMAS_FLASHFREEZE          129  // was Pixelwave (sound reactive, removed)
+#define FX_MODE_XMAS_SHIMMERWIPE          130  // was Juggles (sound reactive, removed)
+#define FX_MODE_XMAS_ORNAMENTPOP          131  // was Matripix (sound reactive, removed)
+#define FX_MODE_XMAS_TWINKLESWAP          132  // was Gravimeter (sound reactive, removed)
+#define FX_MODE_XMAS_HEARTBEAT            133  // was Plasmoid (sound reactive, removed)
+#define FX_MODE_XMAS_SNOWGLOBE            134  // was Puddles (sound reactive, removed)
+#define FX_MODE_XMAS_AURORA               135  // was Midnoise (sound reactive, removed)
+#define FX_MODE_XMAS_SHOWSTOPPER          136  // was Noisemeter (sound reactive, removed)
+#define FX_MODE_XMAS_TINSEL               137  // was Freqwave (sound reactive, removed)
 #define FX_MODE_FREQMATRIX             138
 #define FX_MODE_2DGEQ                  139
 #define FX_MODE_WATERFALL              140
