@@ -13539,7 +13539,7 @@ void mode_goblue_takeover(void) {
   }
   gbSparks(st->p, st->n, dts, 0.15f, len, N, green, WHITE, maize, 1.0f, 1.2f);
 }
-static const char _data_FX_MODE_GOBLUE_TAKEOVER[] PROGMEM = "Go Blue Takeover@Push speed,Glitter,Celebration time,Clash sparks,Tree wraps,Victory stripes,Clash spark spray,;Maize,Blue,Green;;1;sx=110,ix=120,c1=90,c2=120,c3=12,o1=1,o2=1,k0=FFB800,k1=0028FF,k2=00A838";
+static const char _data_FX_MODE_GOBLUE_TAKEOVER[] PROGMEM = "UofM Takeover@Push speed,Glitter,Celebration time,Clash sparks,Tree wraps,Victory stripes,Clash spark spray,;Maize,Blue,Green;;1;sx=110,ix=120,c1=90,c2=120,c3=12,o1=1,o2=1,k0=FFB800,k1=0028FF,k2=00A838";
 
 /*
  * Go Blue Victors March: the whole tree marches to a fight-song tempo. Maize & blue spiral stripes step
@@ -13596,7 +13596,7 @@ void mode_goblue_march(void) {
   hwBlob(len, N, 0.985f, 0.0f, 0.025f, 0.2f, maize, 0.5f + 0.7f * pulse);
   gbSparks(st->p, st->n, dts, 0.12f, len, N, WHITE, WHITE, maize, 1.0f, 1.3f);
 }
-static const char _data_FX_MODE_GOBLUE_MARCH[] PROGMEM = "Go Blue Victors March@Tempo,Glitter,Stripes,Band brightness,Tree wraps,Climbing bands,Hail every 8 beats,Maize glitter;Maize,Blue;;1;sx=128,ix=110,c1=60,c2=150,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF";
+static const char _data_FX_MODE_GOBLUE_MARCH[] PROGMEM = "UofM Victors March@Tempo,Glitter,Stripes,Band brightness,Tree wraps,Climbing bands,Hail every 8 beats,Maize glitter;Maize,Blue;;1;sx=128,ix=110,c1=60,c2=150,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF";
 
 // the shared "we won" look: blue with turning maize stripes and maize / white glitter
 static uint32_t gbVictory(int i, float h, float az, float tt, float spin, float glit, uint32_t maize, uint32_t blue) {
@@ -13661,7 +13661,7 @@ void mode_goblue_wipe(void) {
     SEGMENT.setPixelColor(i, col);
   }
 }
-static const char _data_FX_MODE_GOBLUE_WIPE[] PROGMEM = "Go Blue Sparkle Wipe@Wipe speed,Sparkles,Edge width,Hold time,Tree wraps,Alternate direction,Wavy edge,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=80,c2=70,c3=12,o1=1,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
+static const char _data_FX_MODE_GOBLUE_WIPE[] PROGMEM = "UofM Sparkle Wipe@Wipe speed,Sparkles,Edge width,Hold time,Tree wraps,Alternate direction,Wavy edge,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=80,c2=70,c3=12,o1=1,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
 
 /*
  * Go Blue Spin Wipe: maize sweeps around the trunk like a hand on a clock, with a sparkling edge, until the
@@ -13715,7 +13715,7 @@ void mode_goblue_spin(void) {
     SEGMENT.setPixelColor(i, col);
   }
 }
-static const char _data_FX_MODE_GOBLUE_SPIN[] PROGMEM = "Go Blue Spin Wipe@Spin speed,Sparkles,Twist,Hold time,Tree wraps,Two hands,Reverse,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=90,c2=70,c3=12,o1=0,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
+static const char _data_FX_MODE_GOBLUE_SPIN[] PROGMEM = "UofM Spin Wipe@Spin speed,Sparkles,Twist,Hold time,Tree wraps,Two hands,Reverse,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=90,c2=70,c3=12,o1=0,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
 
 /*
  * Go Blue Glitter Fill: the tree is blue. One pixel at a time flashes white and settles into maize, until
@@ -13772,7 +13772,7 @@ void mode_goblue_fill(void) {
   }
   gbSparks(st->p, st->n, dts, 0.15f, len, N, c[0], spk, BLACK, 1.0f, 1.2f);
 }
-static const char _data_FX_MODE_GOBLUE_FILL[] PROGMEM = "Go Blue Glitter Fill@Fill speed,Hold time,Twinkle length,Idle glitter,Tree wraps,Bottom to top,White hot,Finale burst;Maize,Blue,Sparkle;;1;sx=120,ix=70,c1=90,c2=90,c3=12,o1=0,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
+static const char _data_FX_MODE_GOBLUE_FILL[] PROGMEM = "UofM Glitter Fill@Fill speed,Hold time,Twinkle length,Idle glitter,Tree wraps,Bottom to top,White hot,Finale burst;Maize,Blue,Sparkle;;1;sx=120,ix=70,c1=90,c2=90,c3=12,o1=0,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
 
 /*
  * Go Blue Meltdown: a proud green & white tree starts melting from the tip down, dripping green as it
@@ -13856,7 +13856,7 @@ void mode_goblue_meltdown(void) {
   if (ph == 3) hwBlob(len, N, 0.985f, 0.0f, 0.03f, 0.2f, maize, 0.7f + 0.5f * fabsf(sin_approx(tt * 4.0f)));
   gbSparks(st->p, st->n, dts, ph == 1 ? 0.12f : -0.05f, len, N, ph == 1 ? green : maize, WHITE, BLACK, ph == 1 ? 1.5f : 1.0f, 1.2f);
 }
-static const char _data_FX_MODE_GOBLUE_MELTDOWN[] PROGMEM = "Go Blue Meltdown@Melt speed,Glitter,Celebration time,Drips,Tree wraps,Green drips,Rising embers,Victory flames;Maize,Blue,Green;;1;sx=110,ix=110,c1=90,c2=120,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
+static const char _data_FX_MODE_GOBLUE_MELTDOWN[] PROGMEM = "UofM Meltdown@Melt speed,Glitter,Celebration time,Drips,Tree wraps,Green drips,Rising embers,Victory flames;Maize,Blue,Green;;1;sx=110,ix=110,c1=90,c2=120,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
 // AI: end
 
 void WS2812FX::setupEffectData() {
