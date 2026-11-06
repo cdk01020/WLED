@@ -13542,228 +13542,6 @@ void mode_goblue_takeover(void) {
 static const char _data_FX_MODE_GOBLUE_TAKEOVER[] PROGMEM = "Go Blue Takeover@Push speed,Glitter,Celebration time,Clash sparks,Tree wraps,Victory stripes,Clash spark spray,;Maize,Blue,Green;;1;sx=110,ix=120,c1=90,c2=120,c3=12,o1=1,o2=1,k0=FFB800,k1=0028FF,k2=00A838";
 
 /*
- * Go Blue Touchdown Drive: the top of the tree is a green field with white yard lines. A maize football
- * runs up the strand, plowing through green defenders (they burst when hit). When it reaches the tip:
- * touchdown! Fireworks at the top, the tree flashes maize/blue, and a new maize or blue score band locks
- * in from the bottom. Each score pushes the field higher until the tree is all maize & blue, then a
- * victory celebration with falling maize sparkle rain, and a new game starts.
- */
-struct GbDef { float h, a, va, hit; };
-struct GbTd { uint32_t last; float tt, phT, fill, bi; uint8_t phase, score, n, nd; GbDef d[6]; FdP p[90]; };
-
-static void gbTdNewDrive(GbTd* st, uint16_t len, uint8_t defenders, float fillTarget) {
-  st->bi = hwIndexAt(fillTarget, len);
-  st->nd = defenders;
-  for (int k = 0; k < defenders; k++) {
-    GbDef& d = st->d[k];
-    d.h = fillTarget + (0.97f - fillTarget) * (0.15f + 0.8f * hwRand());
-    d.a = hwRand() * HW_TAU; d.va = (hwRand() - 0.5f) * 1.2f; d.hit = -1.0f;
-  }
-}
-
-void mode_goblue_touchdown(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbTd))) { mode_static(); return; }
-  GbTd* st = reinterpret_cast<GbTd*>(SEGENV.data);
-  const float N = hwWraps();
-  const uint8_t win = 2 + SEGMENT.custom1 * 7 / 255;                  // touchdowns to win (2..9)
-  const uint8_t defs = SEGMENT.check1 ? (uint8_t)(SEGMENT.intensity * 6 / 255) : 0;
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbTd)); st->last = strip.now; gbTdNewDrive(st, len, defs, 0.0f); }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
-  const float glit = SEGMENT.custom2 / 255.0f * 2.5f;
-  const uint8_t score = min(st->score, win);
-  const float target = (float)score / (float)win;
-  st->fill += (target - st->fill) * min(1.0f, dts * 2.5f);
-  st->phT += dts;
-
-  if (st->phase == 0) {                                                 // the drive
-    const float pxs = (float)len * (0.06f + SEGMENT.speed / 255.0f * 0.3f);
-    st->bi += pxs * dts;
-    const float bh = hwHeight((uint16_t)min((int)st->bi, len - 1), len);
-    const float ba = HW_TAU * N * bh;
-    for (int k = 0; k < st->nd; k++) {
-      GbDef& d = st->d[k];
-      if (d.hit >= 0.0f) { d.hit += dts; continue; }
-      d.a += d.va * dts;
-      const float dh = bh - d.h, da = hwAngDiff(ba, d.a) * fdRad(d.h);
-      if (dh * dh + da * da < 0.0035f) { d.hit = 0.0f; gbBurst(st->p, st->n, 90, d.h, d.a, 14, 0.25f, 0.05f); }
-    }
-    if (st->bi >= (float)(len - 1) * 0.995f) {                          // touchdown!
-      st->phase = 1; st->phT = 0.0f; st->score++;
-      gbBurst(st->p, st->n, 90, 0.97f, 0.0f, 50, 0.4f, 0.1f);
-    }
-  } else if (st->phase == 1) {                                          // touchdown celebration
-    if (st->phT > 2.2f) {
-      st->phT = 0.0f;
-      if (st->score >= win) st->phase = 2;
-      else { st->phase = 0; gbTdNewDrive(st, len, defs, target); }
-    }
-  } else if (st->phase == 2) {                                          // won the game
-    if (st->phT > 3.0f + SEGMENT.custom1 / 255.0f * 8.0f) { st->phase = 3; st->phT = 0.0f; }
-  } else if (st->phT > 1.5f) {                                          // 3: fade out, new game
-    st->phase = 0; st->phT = 0.0f; st->score = 0; st->fill = 0.0f; gbTdNewDrive(st, len, defs, 0.0f);
-  }
-  // falling maize sparkle rain after a score
-  if (SEGMENT.check3 && (st->phase == 1 || st->phase == 2)) {
-    const int cnt = (int)(dts * (st->phase == 2 ? 45.0f : 25.0f) + hwRand());
-    for (int k = 0; k < cnt; k++) gbSpark(st->p, st->n, 90, 1.0f, hwRand() * HW_TAU, -0.05f - 0.1f * hwRand(),
-                                         (hwRand() - 0.5f) * 0.1f, 2.0f + 2.0f * hwRand(), k & 1);
-  }
-  const float tdFlash = (st->phase == 1 && SEGMENT.check2) ? (st->phT < 1.5f ? 1.0f : 0.0f) : 0.0f;
-  const bool flashM = ((int)(st->phT * 4.0f) & 1) == 0;
-  const float out = st->phase == 3 ? 1.0f - hwSmooth(st->phT / 1.5f) : 1.0f;
-  const float wrap = (float)win;
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = fdAz(h, N);
-    uint32_t col;
-    if (h < st->fill || st->phase == 2) {                               // score bands, alternating maize / blue
-      const int band = min((int)(h * wrap), win - 1);
-      col = (band & 1) ? hwColor(blue, 0.75f) : hwColor(maize, 0.75f);
-      if (st->phase == 2) col = hwMix(hwColor(blue, 0.75f), hwColor(maize, 0.8f), gbStripe(az, h, 2.0f, 3.0f, -tt * 0.5f));
-      float g = xmTwinkle(i, tt * 1.3f, glit, 401); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g));
-    } else {                                                            // the field
-      col = hwColor(green, 0.32f + 0.08f * hwNoise(az * 8.0f, h * 12.0f));
-      const float yl = xmFrac(h * 10.0f);                                // yard lines
-      const float y = min(yl, 1.0f - yl);
-      if (y < 0.06f) col = color_add(col, hwColor(WHITE, 0.35f * (1.0f - y / 0.06f)));
-      const float g = xmTwinkle(i, tt, glit * 0.3f, 403); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g * 0.5f));
-    }
-    if (tdFlash > 0.0f) col = hwMix(col, flashM ? maize : blue, 0.55f);
-    SEGMENT.setPixelColor(i, out < 1.0f ? hwColor(col, out) : col);
-  }
-  // end zone glow at the tip during a drive
-  if (st->phase == 0) hwBlob(len, N, 0.985f, 0.0f, 0.025f, 0.2f, WHITE, 0.25f + 0.15f * sin_approx(tt * 3.0f));
-  // defenders
-  for (int k = 0; k < st->nd; k++) {
-    const GbDef& d = st->d[k];
-    if (d.hit < 0.0f) {
-      hwBlob(len, N, d.h, d.a, 0.03f, 0.04f, green, 1.1f);
-      hwBlob(len, N, d.h, d.a, 0.008f, 0.012f, WHITE, 0.6f + 0.3f * sin_approx(tt * 6.0f + k));
-    } else if (d.hit < 0.25f) hwBlob(len, N, d.h, d.a, 0.04f, 0.05f, WHITE, 1.5f * (1.0f - d.hit / 0.25f));
-  }
-  // the ball with a maize trail
-  if (st->phase == 0) {
-    const int b = (int)st->bi;
-    for (int t = 0; t < 30; t++) {
-      const int i = b - t; if (i < 0) break; if (i >= len) continue;
-      const float k = t == 0 ? 1.0f : 0.8f * (1.0f - t / 30.0f);
-      SEGMENT.addPixelColor(i, hwColor(t < 2 ? WHITE : maize, k));
-    }
-    const float bh = hwHeight((uint16_t)min(b, len - 1), len);
-    hwBlob(len, N, bh, HW_TAU * N * bh, 0.012f, 0.02f, maize, 0.8f);
-  }
-  gbSparks(st->p, st->n, dts, 0.1f, len, N, maize, WHITE, BLACK, 1.0f, out);
-}
-static const char _data_FX_MODE_GOBLUE_TOUCHDOWN[] PROGMEM = "Go Blue Touchdown Drive@Ball speed,Defenders,Scores to win,Glitter,Tree wraps,Defenders,Touchdown flashes,Sparkle rain;Maize,Blue,Green;;1;sx=100,ix=170,c1=150,c2=110,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
-
-/*
- * Go Blue Spartan Smash: green & white glowing spartans pop up around a deep blue tree. Maize hammers
- * drop straight down the tree onto them (thanks to the tree wraps mapping they really fall straight
- * down). Each hit flashes white, sprays maize sparks and sends a ripple ring across the tree, and the
- * tree glows brighter maize & blue with every smash.
- */
-struct GbSpartan { float h, a, age; uint8_t live, targeted; };
-struct GbHammer { float h, a, v; int8_t t; };
-struct GbRing { float h, a, t; };
-struct GbSmash { uint32_t last; float tt, next, spawn, glow; uint8_t n; GbSpartan s[10]; GbHammer m[4]; GbRing r[6]; FdP p[90]; };
-
-void mode_goblue_smash(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbSmash))) { mode_static(); return; }
-  GbSmash* st = reinterpret_cast<GbSmash*>(SEGENV.data);
-  if (SEGENV.call == 0) {
-    memset(st, 0, sizeof(GbSmash)); st->last = strip.now; st->next = 1.5f;
-    for (int k = 0; k < 4; k++) st->m[k].t = -1;
-    for (int k = 0; k < 6; k++) st->r[k].t = 9.0f;
-  }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
-  const float sp = 0.4f + SEGMENT.speed / 255.0f * 1.6f;
-  const int want = 2 + SEGMENT.intensity * 8 / 255;
-  const int burst = 8 + SEGMENT.custom1 * 40 / 255;
-
-  // spartans pop up
-  int live = 0; for (int k = 0; k < 10; k++) live += st->s[k].live;
-  st->spawn -= dts;
-  if (live < want && st->spawn <= 0.0f) {
-    for (int k = 0; k < 10; k++) if (!st->s[k].live) {
-      GbSpartan& s = st->s[k]; s.live = 1; s.targeted = 0; s.age = 0.0f;
-      s.h = 0.08f + 0.78f * hwRand(); s.a = hwRand() * HW_TAU; break;
-    }
-    st->spawn = 0.4f + 0.8f * hwRand();
-  }
-  for (int k = 0; k < 10; k++) if (st->s[k].live) st->s[k].age += dts;
-  // drop a hammer on one
-  st->next -= dts * sp;
-  if (st->next <= 0.0f) {
-    int pick = -1, cnt = 0;
-    for (int k = 0; k < 10; k++) if (st->s[k].live && !st->s[k].targeted && st->s[k].age > 0.8f && hw_random8(++cnt) == 0) pick = k;
-    if (pick >= 0) for (int j = 0; j < 4; j++) if (st->m[j].t < 0) {
-      st->m[j].t = pick; st->m[j].h = 1.08f; st->m[j].a = st->s[pick].a; st->m[j].v = 0.15f;
-      st->s[pick].targeted = 1; break;
-    }
-    st->next = 0.6f + 1.2f * hwRand();
-  }
-  // hammers fall
-  for (int j = 0; j < 4; j++) {
-    GbHammer& m = st->m[j];
-    if (m.t < 0) continue;
-    m.v += 1.6f * sp * dts; m.h -= m.v * dts;
-    GbSpartan& s = st->s[m.t];
-    if (m.h <= s.h) {                                                   // SMASH
-      s.live = 0; m.t = -1;
-      gbBurst(st->p, st->n, 90, s.h, s.a, burst, 0.35f, 0.08f);
-      if (SEGMENT.check1) {
-        int r = 0; for (int k = 1; k < 6; k++) if (st->r[k].t > st->r[r].t) r = k;
-        st->r[r].h = s.h; st->r[r].a = s.a; st->r[r].t = 0.0f;
-      }
-      if (SEGMENT.check3) st->glow = min(1.0f, st->glow + 0.12f);
-    }
-  }
-  for (int k = 0; k < 6; k++) if (st->r[k].t < 9.0f) st->r[k].t += dts;
-  st->glow = max(0.0f, st->glow - dts * 0.02f);
-  float flash = 0.0f;
-  if (SEGMENT.check2) for (int k = 0; k < 6; k++) if (st->r[k].t < 0.3f) flash = max(flash, 1.0f - st->r[k].t / 0.3f);
-
-  const float bg = 0.15f + SEGMENT.custom2 / 255.0f * 0.35f + 0.35f * st->glow;
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = fdAz(h, N);
-    uint32_t col = hwColor(blue, bg * (0.7f + 0.3f * hwNoise(az * 5.0f, h * 6.0f - tt * 0.3f)));
-    float g = xmTwinkle(i, tt, 0.3f + 1.5f * st->glow, 501); if (g > 0.0f) col = color_add(col, hwColor(maize, g * (0.5f + 0.5f * st->glow)));
-    if (st->glow > 0.3f) col = color_add(col, hwColor(maize, (st->glow - 0.3f) * 0.5f * gbStripe(az, h, 2.0f, 3.0f, -tt * 0.3f)));
-    for (int k = 0; k < 6; k++) {
-      const GbRing& r = st->r[k];
-      if (r.t > 1.2f) continue;
-      const float dh = h - r.h, da = hwArc(h, N, r.a);
-      const float dd = sqrtf(dh * dh + da * da) - r.t * 0.4f;
-      const float v = hwGauss((dd / 0.02f) * (dd / 0.02f)) * (1.0f - r.t / 1.2f);
-      if (v > 0.01f) col = color_add(col, hwColor(hwMix(blue, WHITE, 0.5f), v));
-    }
-    if (flash > 0.0f) col = color_add(col, hwColor(WHITE, 0.3f * flash));
-    SEGMENT.setPixelColor(i, col);
-  }
-  // spartans
-  for (int k = 0; k < 10; k++) {
-    const GbSpartan& s = st->s[k];
-    if (!s.live) continue;
-    const float k0 = hwSmooth(s.age / 0.8f);
-    hwBlob(len, N, s.h, s.a, 0.035f, 0.045f, green, 1.2f * k0);
-    hwBlob(len, N, s.h, s.a, 0.009f, 0.013f, WHITE, k0 * (0.5f + 0.3f * sin_approx(tt * 5.0f + k)));
-  }
-  // hammers with a streak above them
-  for (int j = 0; j < 4; j++) {
-    const GbHammer& m = st->m[j];
-    if (m.t < 0) continue;
-    for (int t = 0; t < 5; t++) hwBlob(len, N, m.h + t * 0.025f, m.a, 0.018f, 0.025f, t == 0 ? hwMix(maize, WHITE, 0.4f) : maize, 1.3f * (1.0f - t / 5.0f));
-  }
-  gbSparks(st->p, st->n, dts, 0.25f, len, N, maize, WHITE, BLACK, 1.0f, 1.3f);
-}
-static const char _data_FX_MODE_GOBLUE_SMASH[] PROGMEM = "Go Blue Spartan Smash@Smash speed,Spartans,Spark burst,Background glow,Tree wraps,Ripple rings,Hit flash,Glow builds up;Maize,Blue,Green;;1;sx=110,ix=140,c1=130,c2=90,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
-
-/*
  * Go Blue Victors March: the whole tree marches to a fight-song tempo. Maize & blue spiral stripes step
  * around the tree on every beat, bright bands climb the tree a step at a time like a marching band, and
  * every 8 beats a "hail" of white-hot sparks bursts from the tip and rains down, cooling to maize.
@@ -13819,6 +13597,360 @@ void mode_goblue_march(void) {
   gbSparks(st->p, st->n, dts, 0.12f, len, N, WHITE, WHITE, maize, 1.0f, 1.3f);
 }
 static const char _data_FX_MODE_GOBLUE_MARCH[] PROGMEM = "Go Blue Victors March@Tempo,Glitter,Stripes,Band brightness,Tree wraps,Climbing bands,Hail every 8 beats,Maize glitter;Maize,Blue;;1;sx=128,ix=110,c1=60,c2=150,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF";
+
+// 5x7 letters for the Go Blue text effects: space ! # - 0-9 A-Z. 5 columns per letter, bit 0 = top row.
+// (classic 5x7 LCD font shapes)
+static const uint8_t gbFont[][5] PROGMEM = {
+  {0x00,0x00,0x00,0x00,0x00}, {0x00,0x00,0x5F,0x00,0x00}, {0x14,0x7F,0x14,0x7F,0x14}, {0x08,0x08,0x08,0x08,0x08},
+  {0x3E,0x51,0x49,0x45,0x3E}, {0x00,0x42,0x7F,0x40,0x00}, {0x42,0x61,0x51,0x49,0x46}, {0x21,0x41,0x45,0x4B,0x31},
+  {0x18,0x14,0x12,0x7F,0x10}, {0x27,0x45,0x45,0x45,0x39}, {0x3C,0x4A,0x49,0x49,0x30}, {0x01,0x71,0x09,0x05,0x03},
+  {0x36,0x49,0x49,0x49,0x36}, {0x06,0x49,0x49,0x29,0x1E},
+  {0x7E,0x11,0x11,0x11,0x7E}, {0x7F,0x49,0x49,0x49,0x36}, {0x3E,0x41,0x41,0x41,0x22}, {0x7F,0x41,0x41,0x22,0x1C},
+  {0x7F,0x49,0x49,0x49,0x41}, {0x7F,0x09,0x09,0x09,0x01}, {0x3E,0x41,0x49,0x49,0x7A}, {0x7F,0x08,0x08,0x08,0x7F},
+  {0x00,0x41,0x7F,0x41,0x00}, {0x20,0x40,0x41,0x3F,0x01}, {0x7F,0x08,0x14,0x22,0x41}, {0x7F,0x40,0x40,0x40,0x40},
+  {0x7F,0x02,0x0C,0x02,0x7F}, {0x7F,0x04,0x08,0x10,0x7F}, {0x3E,0x41,0x41,0x41,0x3E}, {0x7F,0x09,0x09,0x09,0x06},
+  {0x3E,0x41,0x51,0x21,0x5E}, {0x7F,0x09,0x19,0x29,0x46}, {0x46,0x49,0x49,0x49,0x31}, {0x01,0x01,0x7F,0x01,0x01},
+  {0x3F,0x40,0x40,0x40,0x3F}, {0x1F,0x20,0x40,0x20,0x1F}, {0x3F,0x40,0x38,0x40,0x3F}, {0x63,0x14,0x08,0x14,0x63},
+  {0x07,0x08,0x70,0x08,0x07}, {0x61,0x51,0x49,0x45,0x43}
+};
+static int gbGlyph(char c) {
+  if (c >= 'a' && c <= 'z') c -= 32;
+  if (c >= 'A' && c <= 'Z') return 14 + (c - 'A');
+  if (c >= '0' && c <= '9') return 4 + (c - '0');
+  if (c == '!') return 1;
+  if (c == '#') return 2;
+  if (c == '-') return 3;
+  return 0;
+}
+/*
+ * Which letter of a message lights the pixel at height h / turn fraction az, or -1.
+ * The text is 7 strand wraps tall: each wrap of the spiral is one row of letter dots, with row 0 at
+ * rowTop (in wraps). cols = letter dot columns around the whole tree (fewer = bigger letters),
+ * scroll = how far the text has moved (in columns). flip reverses the direction for strands wound the
+ * other way. The message repeats around the tree with a gap; the seam where rows meet is at az = 0.
+ */
+static int gbTextAt(const char* s, int n, float h, float az, float N, float rowTop, float cols, float scroll, bool flip) {
+  const float y = rowTop - h * N;
+  if (y < 0.0f || y >= 7.0f || n <= 0) return -1;
+  const int row = (int)y;
+  const int P = n * 6 + 8;
+  int c = (int)floorf((flip ? 1.0f - az : az) * cols + scroll) % P;
+  if (c < 0) c += P;
+  const int ch = c / 6, cx = c % 6;
+  if (ch >= n || cx == 5) return -1;
+  const uint8_t bits = pgm_read_byte(&gbFont[gbGlyph(s[ch])][cx]);
+  return ((bits >> row) & 1) ? ch : -1;
+}
+// top row (in wraps) for text centered at height hc; a whole number puts the row seam at az = 0
+static inline float gbRowTop(float hc, float N) { return floorf(hc * N + 3.5f); }
+// the shared "we won" look: blue with turning maize stripes and maize / white glitter
+static uint32_t gbVictory(int i, float h, float az, float tt, float spin, float glit, uint32_t maize, uint32_t blue) {
+  uint32_t c = hwMix(hwColor(blue, 0.7f), maize, gbStripe(az, h, 3.0f, 2.0f, -spin) * 0.9f);
+  float g = xmTwinkle(i, tt * 1.4f, glit, 701); if (g > 0.0f) c = color_add(c, hwColor(maize, g));
+  g = xmTwinkle(i, tt * 1.7f, glit * 0.6f, 709); if (g > 0.0f) c = color_add(c, hwColor(WHITE, g));
+  return c;
+}
+
+/*
+ * Go Blue Message: big maize letters scroll around a dark blue tree: GO BLUE, HAIL TO THE VICTORS,
+ * BEAT STATE, MICHIGAN #1 in turn. With "Use segment name" on, it scrolls the segment's name instead,
+ * so you can type your own message in WLED (letters, numbers, ! # - and spaces).
+ */
+static const char* const gbMessages[] = { "GO BLUE", "HAIL TO THE VICTORS", "BEAT STATE", "MICHIGAN #1" };
+struct GbMsg { uint32_t last; float tt, scroll, spin; uint8_t idx; };
+
+void mode_goblue_message(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbMsg))) { mode_static(); return; }
+  GbMsg* st = reinterpret_cast<GbMsg*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbMsg)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF);
+  const char* msg = gbMessages[st->idx % 4];
+  if (SEGMENT.check1 && SEGMENT.name && SEGMENT.name[0]) msg = SEGMENT.name;
+  const int n = min((int)strlen(msg), 48);
+  const float cols = 90.0f - SEGMENT.custom2 / 255.0f * 60.0f;
+  const float P = (float)(n * 6 + 8);
+  const float cycle = P * max(2.0f, ceilf(cols / P));   // show each message for a couple of passes
+  st->scroll += dts * (4.0f + SEGMENT.speed / 255.0f * 30.0f);
+  if (st->scroll >= cycle) { st->scroll = 0.0f; st->idx = (st->idx + 1) % 4; }
+  st->spin += dts * 0.2f;
+  if (st->spin > 1000.0f) st->spin -= 1000.0f;
+  const float textK = hwSmooth(min(st->scroll, cycle - st->scroll) / 6.0f);
+  const float rowTop = gbRowTop(0.2f + SEGMENT.custom1 / 255.0f * 0.6f, N);
+  const float glit = SEGMENT.intensity / 255.0f * 2.5f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    const float y = rowTop - h * N;
+    const bool band = y > -1.0f && y < 8.0f;                 // darker behind the letters so they read
+    uint32_t col = hwColor(blue, band ? 0.18f : 0.4f);
+    if (!band) col = hwMix(col, hwColor(maize, 0.5f), gbStripe(az, h, 2.0f, 3.0f, -st->spin) * 0.35f);
+    if (SEGMENT.check3 && !band) { const float g = xmTwinkle(i, tt, glit * 0.5f, 711); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g)); }
+    if (gbTextAt(msg, n, h, az, N, rowTop, cols, st->scroll, SEGMENT.check2) >= 0) {
+      uint32_t t = hwColor(maize, 0.85f + 0.15f * sin_approx(tt * 3.0f + az * HW_TAU));
+      const float g = xmTwinkle(i, tt * 1.5f, glit, 713); if (g > 0.0f) t = color_add(t, hwColor(WHITE, g * 0.8f));
+      col = hwMix(col, t, textK);
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+}
+static const char _data_FX_MODE_GOBLUE_MESSAGE[] PROGMEM = "Go Blue Message@Scroll speed,Glitter,Text height,Letter size,Tree wraps,Use segment name,Flip text,Background glitter;Maize,Blue;;1;sx=90,ix=90,c1=120,c2=110,c3=12,o3=1,k0=FFB800,k1=0028FF";
+
+/*
+ * Go Blue Scoreboard: a scoreboard scrolls around the tree, MICH in bright maize and MSU 0 in a dim,
+ * sputtering green. Michigan keeps scoring: TOUCHDOWN! flashes across the tree with fireworks at the tip
+ * and the score jumps by 7. Michigan State never scores. At the final score the tree reads
+ * MICHIGAN WINS with the final score and celebrates, then a new game starts.
+ */
+struct GbScore { uint32_t last; float tt, scroll, phT, spin; uint8_t phase, um, n, bursts; FdP p[90]; };
+
+void mode_goblue_scoreboard(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbScore))) { mode_static(); return; }
+  GbScore* st = reinterpret_cast<GbScore*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbScore)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
+  const float pace = 14.0f - SEGMENT.intensity / 255.0f * 10.0f;     // seconds between touchdowns
+  const uint8_t winScore = 7 * (3 + SEGMENT.custom1 * 8 / 255);          // 21..77
+  const float cols = 90.0f - SEGMENT.custom2 / 255.0f * 60.0f;
+  const bool flip = SEGMENT.check3;
+
+  st->phT += dts;
+  st->spin += dts * 0.3f;
+  if (st->spin > 1000.0f) st->spin -= 1000.0f;
+  if (st->phase == 0 && st->phT > pace) {                               // touchdown!
+    st->phase = 1; st->phT = 0.0f; st->um += 7; st->scroll = 0.0f; st->bursts = 0;
+  } else if (st->phase == 1 && st->phT > 3.0f) {
+    st->phT = 0.0f; st->scroll = 0.0f;
+    st->phase = st->um >= winScore ? 2 : 0; st->bursts = 0;
+  } else if (st->phase == 2 && st->phT > 14.0f) {
+    st->phase = 3; st->phT = 0.0f;
+  } else if (st->phase == 3 && st->phT > 1.5f) {
+    st->phase = 0; st->phT = 0.0f; st->um = 0; st->scroll = 0.0f;
+  }
+  // fireworks at the tip: three bursts per touchdown, more at the end
+  if (SEGMENT.check1 && (st->phase == 1 || st->phase == 2)) {
+    const float every = st->phase == 1 ? 0.45f : 0.9f;
+    if (st->phT > st->bursts * every && st->bursts < 30) {
+      st->bursts++;
+      gbBurst(st->p, st->n, 90, 0.8f + 0.17f * hwRand(), hwRand() * HW_TAU, 30, 0.35f, 0.08f);
+    }
+  }
+  st->scroll += dts * (4.0f + SEGMENT.speed / 255.0f * 30.0f);
+  if (st->scroll > 100000.0f) st->scroll = 0.0f;
+
+  char msg[40];
+  int msu = -1;                                                         // first letter shown in green
+  if (st->phase == 0) { const int k = snprintf(msg, sizeof(msg), "MICH %d   ", st->um); msu = k; snprintf(msg + k, sizeof(msg) - k, "MSU 0"); }
+  else if (st->phase == 1) snprintf(msg, sizeof(msg), "TOUCHDOWN!");
+  else snprintf(msg, sizeof(msg), "MICHIGAN WINS  %d-0", st->um);
+  const int n = strlen(msg);
+  const float rowTop = gbRowTop(0.45f, N);
+  const bool tdFlash = st->phase == 1 && SEGMENT.check2 && st->phT < 2.0f;
+  const bool flashM = ((int)(st->phT * 5.0f) & 1) == 0;
+  const float out = st->phase == 3 ? 1.0f - hwSmooth(st->phT / 1.5f) : 1.0f;
+  const float sputter = 0.25f + 0.2f * hwNoise(tt * 4.0f, 3.0f) * (hw_random8() < 20 ? 0.2f : 1.0f);
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    const float y = rowTop - h * N;
+    const bool band = y > -1.0f && y < 8.0f;
+    uint32_t col;
+    if (st->phase == 2) col = band ? hwColor(blue, 0.2f) : gbVictory(i, h, az, tt, st->spin, 1.8f, maize, blue);
+    else col = hwColor(blue, band ? 0.15f : 0.35f);
+    if (tdFlash && !band) col = hwMix(col, flashM ? maize : blue, 0.7f);
+    const int ch = gbTextAt(msg, n, h, az, N, rowTop, cols, st->scroll, flip);
+    if (ch >= 0) {
+      if (msu >= 0 && ch >= msu) col = hwColor(green, sputter);
+      else if (st->phase == 1) col = flashM ? WHITE : maize;
+      else {
+        col = hwColor(maize, 0.9f);
+        const float g = xmTwinkle(i, tt * 1.5f, 1.0f, 721); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g * 0.7f));
+      }
+    }
+    SEGMENT.setPixelColor(i, out < 1.0f ? hwColor(col, out) : col);
+  }
+  gbSparks(st->p, st->n, dts, 0.1f, len, N, maize, WHITE, BLACK, 1.0f, out);
+}
+static const char _data_FX_MODE_GOBLUE_SCOREBOARD[] PROGMEM = "Go Blue Scoreboard@Scroll speed,Game pace,Final score,Letter size,Tree wraps,Fireworks,Touchdown flashes,Flip text;Maize,Blue,Green;;1;sx=90,ix=110,c1=130,c2=110,c3=12,o1=1,o2=1,k0=FFB800,k1=0028FF,k2=00A838";
+
+/*
+ * Go Blue Claw Marks: the tree is Spartan green & white. A wolverine claw rakes it: three tapered slashes
+ * tear across the tree white-hot and cool to maize with blue edges, throwing off green sparks. The marks
+ * stay and pile up until the green is in shreds, then the last of it crumbles away pixel by pixel into
+ * a maize & blue celebration, and the tree heals green for the next round.
+ */
+struct GbStrike { float h, a, th, age; };
+struct GbClaw { uint32_t last; float tt, next, phT, spin; uint8_t phase, ns, n; GbStrike s[10]; FdP p[90]; };
+
+void mode_goblue_claw(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbClaw))) { mode_static(); return; }
+  GbClaw* st = reinterpret_cast<GbClaw*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbClaw)); st->last = strip.now; st->next = 1.5f; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
+  const float size = 0.6f + SEGMENT.intensity / 255.0f * 0.9f;
+  const float L = 0.3f * size, w = 0.014f * size, gap = 0.04f * size;
+  const uint8_t maxS = 3 + SEGMENT.custom1 * 7 / 255;                  // strikes to win (3..10)
+  const float glit = SEGMENT.custom2 / 255.0f * 2.5f;
+
+  st->phT += dts;
+  st->spin += dts * 0.3f;
+  if (st->spin > 1000.0f) st->spin -= 1000.0f;
+  for (int k = 0; k < st->ns; k++) st->s[k].age += dts;
+  if (st->phase == 0) {
+    st->next -= dts * (0.4f + SEGMENT.speed / 255.0f * 1.6f);
+    if (st->next <= 0.0f && st->ns < maxS && st->ns < 10) {
+      GbStrike& s = st->s[st->ns++];
+      s.h = 0.15f + 0.7f * hwRand(); s.a = hwRand() * HW_TAU; s.age = 0.0f;
+      s.th = (hwRand() < 0.5f ? 1.0f : -1.0f) * (0.6f + 0.5f * hwRand());   // a steep diagonal rake
+      if (SEGMENT.check2) gbBurst(st->p, st->n, 90, s.h, s.a, 24, 0.3f, 0.05f);
+      st->next = 1.5f + hwRand();
+    }
+    if (st->ns >= maxS && st->s[st->ns - 1].age > 1.5f) { st->phase = 1; st->phT = 0.0f; }
+  } else if (st->phase == 1 && st->phT > 2.5f) { st->phase = 2; st->phT = 0.0f; }
+  else if (st->phase == 2 && st->phT > 8.0f) { st->phase = 3; st->phT = 0.0f; }
+  else if (st->phase == 3 && st->phT > 1.5f) { st->phase = 0; st->phT = 0.0f; st->ns = 0; st->next = 1.0f; }
+
+  float shake = 0.0f;
+  if (SEGMENT.check3) for (int k = 0; k < st->ns; k++) if (st->s[k].age < 0.2f) shake = max(shake, 1.0f - st->s[k].age / 0.2f);
+  const float fear = 1.0f - 0.45f * (float)st->ns / (float)maxS;       // the green fades as it gets shredded
+  const float reach = L * 0.6f + gap * 2.0f;
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    uint32_t base = hwColor(green, 0.5f * fear * (0.7f + 0.3f * hwNoise(az * 6.0f, h * 8.0f + tt * 0.2f)));
+    float g = xmTwinkle(i, tt, 0.6f * fear, 731); if (g > 0.0f) base = color_add(base, hwColor(WHITE, g * 0.7f));
+    uint32_t col = base;
+    if (st->phase <= 1 || st->phase == 3) {
+      float cov = 0.0f, hot = 0.0f;
+      for (int k = 0; k < st->ns; k++) {
+        const GbStrike& s = st->s[k];
+        const float dy = h - s.h;
+        if (fabsf(dy) > reach) continue;
+        const float dx = hwAngDiff(HW_TAU * N * h, s.a) * fdRad(h);
+        if (fabsf(dx) > reach) continue;
+        const float cs = cos_approx(s.th), sn = sin_approx(s.th);
+        const float u = dx * cs + dy * sn, v = -dx * sn + dy * cs;
+        const float prog = hwClamp01(s.age / 0.22f), uEnd = -0.5f * L + L * prog;
+        if (u < -0.5f * L || u > uEnd) continue;
+        const float q = 2.0f * u / L, taper = 1.0f - q * q;
+        for (int c = -1; c <= 1; c++) {
+          const float dv = fabsf(v - c * gap) / (w * taper + 0.003f);
+          if (dv >= 1.0f) continue;
+          const float cv = 1.0f - dv * dv;
+          if (cv > cov) { cov = cv; hot = expf(-s.age * 1.5f) + (prog < 1.0f && uEnd - u < 0.03f ? 1.0f : 0.0f); }
+        }
+      }
+      if (cov > 0.0f) {
+        uint32_t sc = hwMix(hwColor(blue, 0.9f), maize, hwSmooth(cov * 1.6f));
+        if (SEGMENT.check1) sc = hwMix(sc, WHITE, hot);
+        col = hwMix(base, sc, hwSmooth(cov * 3.0f));
+      }
+    }
+    const uint32_t vic = gbVictory(i, h, az, tt, st->spin, 0.6f + glit, maize, blue);
+    if (st->phase == 1) {                                               // the green crumbles away
+      const float t0 = hwHash2(i, 7) * 2.2f, d = st->phT - t0;
+      if (d > 0.0f) col = d < 0.15f ? color_add(vic, hwColor(WHITE, 1.0f - d / 0.15f)) : vic;
+    } else if (st->phase == 2) col = vic;
+    else if (st->phase == 3) col = hwMix(vic, base, hwSmooth(st->phT / 1.5f));
+    if (shake > 0.0f) col = color_add(col, hwColor(WHITE, 0.35f * shake));
+    SEGMENT.setPixelColor(i, col);
+  }
+  if (st->phase == 2) hwBlob(len, N, 0.985f, 0.0f, 0.03f, 0.2f, maize, 0.7f + 0.5f * fabsf(sin_approx(tt * 4.0f)));
+  gbSparks(st->p, st->n, dts, 0.2f, len, N, green, WHITE, BLACK, 1.0f, 1.2f);
+}
+static const char _data_FX_MODE_GOBLUE_CLAW[] PROGMEM = "Go Blue Claw Marks@Strike speed,Claw size,Strikes to win,Glitter,Tree wraps,White-hot slashes,Green sparks,Strike flash;Maize,Blue,Green;;1;sx=110,ix=140,c1=100,c2=100,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
+
+/*
+ * Go Blue Meltdown: a proud green & white tree starts melting from the tip down, dripping green as it
+ * goes, until only embers are left. Then maize & blue fire roars up from the bottom, throwing sparks,
+ * fills the tree and settles into a celebration with maize flames licking the bottom. Then it repeats.
+ */
+struct GbMelt { uint32_t last; float tt, phT, spin; uint8_t phase, n; FdP p[90]; };
+
+// maize & blue fire for depth d below the flame front (d < 0 = above the fire)
+static uint32_t gbFire(float h, float az, float d, float tt, uint32_t maize, uint32_t blue) {
+  const float nz = hwNoise(az * 6.0f, h * 7.0f - tt * 2.5f);
+  const float tip = d * 5.0f + (nz - 0.5f) * 1.4f;                     // < 0 flame gone, 0..1 maize tongues, > 1 blue body
+  if (tip <= 0.0f) return BLACK;
+  if (tip < 1.0f) return hwColor(hwMix(WHITE, maize, 0.4f + 0.6f * tip), tip * (0.7f + 0.5f * nz));
+  return hwMix(maize, hwColor(blue, 0.9f), hwSmooth((tip - 1.0f) * 0.8f));
+}
+
+void mode_goblue_meltdown(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbMelt))) { mode_static(); return; }
+  GbMelt* st = reinterpret_cast<GbMelt*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbMelt)); st->last = strip.now; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
+  const float meltT = 10.0f - SEGMENT.speed / 255.0f * 7.0f;           // 3..10 s to melt
+  const float holdT = 2.0f + SEGMENT.custom1 / 255.0f * 18.0f;
+  const float glit = 0.4f + SEGMENT.intensity / 255.0f * 2.2f;
+  const float durs[5] = { 3.0f, meltT, 3.5f, holdT, 1.5f };
+
+  st->phT += dts;
+  if (st->phT >= durs[st->phase]) { st->phT = 0.0f; st->phase = (st->phase + 1) % 5; }
+  st->spin += dts * 0.3f;
+  if (st->spin > 1000.0f) st->spin -= 1000.0f;
+  const uint8_t ph = st->phase;
+  const float p = hwClamp01(st->phT / durs[ph]);
+  const float melt = ph == 1 ? 1.05f - 1.12f * p : (ph == 0 || ph == 4 ? 1.2f : -0.1f);
+  const float fire = ph == 2 ? -0.15f + 1.35f * hwSmooth(p) : (ph == 3 ? 1.3f : -1.0f);
+
+  if (SEGMENT.check1 && ph == 1) {                                      // green drips
+    const int cnt = (int)(dts * (4.0f + SEGMENT.custom2 / 255.0f * 30.0f) + hwRand());
+    for (int k = 0; k < cnt; k++) gbSpark(st->p, st->n, 90, melt, hwRand() * HW_TAU, -0.02f, 0.0f, 1.5f + hwRand(), 0);
+  }
+  if (SEGMENT.check2 && ph == 2) {                                      // rising embers
+    const int cnt = (int)(dts * 40.0f + hwRand());
+    for (int k = 0; k < cnt; k++) gbSpark(st->p, st->n, 90, max(fire, 0.0f) * hwRand(), hwRand() * HW_TAU, 0.15f + 0.3f * hwRand(), (hwRand() - 0.5f) * 0.2f, 0.6f + 0.8f * hwRand(), k & 1);
+  }
+
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len), az = fdAz(h, N);
+    uint32_t proud = hwColor(green, 0.55f * (0.75f + 0.25f * hwNoise(az * 6.0f, h * 8.0f + tt * 0.2f)));
+    float g = xmTwinkle(i, tt, glit * 0.5f, 741); if (g > 0.0f) proud = color_add(proud, hwColor(WHITE, g * 0.8f));
+    uint32_t col = proud;
+    if (ph == 1) {
+      const float ml = melt + 0.03f * sin_approx(HW_TAU * 2.0f * az + tt * 1.5f) + 0.03f * hwNoise(az * 8.0f, tt);
+      const float d = ml - h;
+      if (d < 0.0f) col = hwColor(green, 0.03f + 0.02f * hwNoise(i * 0.3f, tt * 2.0f));   // melted: embers
+      else {
+        col = hwColor(proud, 0.6f + 0.4f * (1.0f - p));
+        const float edge = hwGauss((d / 0.03f) * (d / 0.03f));
+        if (edge > 0.01f) col = color_add(col, hwColor(green, 0.7f * edge));
+      }
+    } else if (ph == 2 || ph == 3) {
+      uint32_t ember = hwColor(green, 0.03f * (1.0f - p));
+      if (ph == 3) {
+        ember = gbVictory(i, h, az, tt, st->spin, glit, maize, blue);
+        if (SEGMENT.check3) { const uint32_t f = gbFire(h, az, 0.32f + 0.04f * sin_approx(tt * 1.3f + az * HW_TAU) - h, tt, maize, blue); if (f != BLACK) ember = f; }
+        if (st->phT < 1.0f) ember = hwMix(gbFire(h, az, 1.3f - h, tt, maize, blue), ember, st->phT);
+      } else {
+        const uint32_t f = gbFire(h, az, fire - h, tt, maize, blue);
+        if (f != BLACK) ember = f;
+      }
+      col = ember;
+    } else if (ph == 4) {
+      uint32_t v = gbVictory(i, h, az, tt, st->spin, glit, maize, blue);
+      if (SEGMENT.check3) { const uint32_t f = gbFire(h, az, 0.32f - h, tt, maize, blue); if (f != BLACK) v = f; }
+      col = hwMix(v, proud, hwSmooth(p));
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+  if (ph == 3) hwBlob(len, N, 0.985f, 0.0f, 0.03f, 0.2f, maize, 0.7f + 0.5f * fabsf(sin_approx(tt * 4.0f)));
+  gbSparks(st->p, st->n, dts, ph == 1 ? 0.12f : -0.05f, len, N, ph == 1 ? green : maize, WHITE, BLACK, ph == 1 ? 1.5f : 1.0f, 1.2f);
+}
+static const char _data_FX_MODE_GOBLUE_MELTDOWN[] PROGMEM = "Go Blue Meltdown@Melt speed,Glitter,Celebration time,Drips,Tree wraps,Green drips,Rising embers,Victory flames;Maize,Blue,Green;;1;sx=110,ix=110,c1=90,c2=120,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
 // AI: end
 
 void WS2812FX::setupEffectData() {
@@ -13868,9 +14000,11 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_PICKLE_HUNT, &mode_pickle_hunt, _data_FX_MODE_PICKLE_HUNT);
   addEffect(FX_MODE_TREE_MAPPER, &mode_tree_mapper, _data_FX_MODE_TREE_MAPPER);
   addEffect(FX_MODE_GOBLUE_TAKEOVER, &mode_goblue_takeover, _data_FX_MODE_GOBLUE_TAKEOVER);
-  addEffect(FX_MODE_GOBLUE_TOUCHDOWN, &mode_goblue_touchdown, _data_FX_MODE_GOBLUE_TOUCHDOWN);
-  addEffect(FX_MODE_GOBLUE_SMASH, &mode_goblue_smash, _data_FX_MODE_GOBLUE_SMASH);
   addEffect(FX_MODE_GOBLUE_MARCH, &mode_goblue_march, _data_FX_MODE_GOBLUE_MARCH);
+  addEffect(FX_MODE_GOBLUE_MESSAGE, &mode_goblue_message, _data_FX_MODE_GOBLUE_MESSAGE);
+  addEffect(FX_MODE_GOBLUE_SCOREBOARD, &mode_goblue_scoreboard, _data_FX_MODE_GOBLUE_SCOREBOARD);
+  addEffect(FX_MODE_GOBLUE_CLAW, &mode_goblue_claw, _data_FX_MODE_GOBLUE_CLAW);
+  addEffect(FX_MODE_GOBLUE_MELTDOWN, &mode_goblue_meltdown, _data_FX_MODE_GOBLUE_MELTDOWN);
 
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);
