@@ -286,10 +286,10 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_XMAS_TINSEL               133  // was Plasmoid (sound reactive, removed)
 // 134-139 reused on this branch for the Go Blue effects
 #define FX_MODE_GOBLUE_TAKEOVER        134  // was Puddles (sound reactive, removed)
-#define FX_MODE_GOBLUE_MESSAGE         135  // was Midnoise (sound reactive, removed)
-#define FX_MODE_GOBLUE_SCOREBOARD      136  // was Noisemeter (sound reactive, removed)
+#define FX_MODE_GOBLUE_WIPE            135  // was Midnoise (sound reactive, removed)
+#define FX_MODE_GOBLUE_SPIN            136  // was Noisemeter (sound reactive, removed)
 #define FX_MODE_GOBLUE_MARCH           137  // was Freqwave (sound reactive, removed)
-#define FX_MODE_GOBLUE_CLAW            138  // was Freqmatrix (sound reactive, removed)
+#define FX_MODE_GOBLUE_FILL            138  // was Freqmatrix (sound reactive, removed)
 #define FX_MODE_GOBLUE_MELTDOWN        139  // was GEQ (sound reactive, removed)
 #define FX_MODE_WATERFALL              140
 #define FX_MODE_FREQPIXELS             141

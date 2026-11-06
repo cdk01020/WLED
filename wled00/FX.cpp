@@ -13598,51 +13598,6 @@ void mode_goblue_march(void) {
 }
 static const char _data_FX_MODE_GOBLUE_MARCH[] PROGMEM = "Go Blue Victors March@Tempo,Glitter,Stripes,Band brightness,Tree wraps,Climbing bands,Hail every 8 beats,Maize glitter;Maize,Blue;;1;sx=128,ix=110,c1=60,c2=150,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF";
 
-// 5x7 letters for the Go Blue text effects: space ! # - 0-9 A-Z. 5 columns per letter, bit 0 = top row.
-// (classic 5x7 LCD font shapes)
-static const uint8_t gbFont[][5] PROGMEM = {
-  {0x00,0x00,0x00,0x00,0x00}, {0x00,0x00,0x5F,0x00,0x00}, {0x14,0x7F,0x14,0x7F,0x14}, {0x08,0x08,0x08,0x08,0x08},
-  {0x3E,0x51,0x49,0x45,0x3E}, {0x00,0x42,0x7F,0x40,0x00}, {0x42,0x61,0x51,0x49,0x46}, {0x21,0x41,0x45,0x4B,0x31},
-  {0x18,0x14,0x12,0x7F,0x10}, {0x27,0x45,0x45,0x45,0x39}, {0x3C,0x4A,0x49,0x49,0x30}, {0x01,0x71,0x09,0x05,0x03},
-  {0x36,0x49,0x49,0x49,0x36}, {0x06,0x49,0x49,0x29,0x1E},
-  {0x7E,0x11,0x11,0x11,0x7E}, {0x7F,0x49,0x49,0x49,0x36}, {0x3E,0x41,0x41,0x41,0x22}, {0x7F,0x41,0x41,0x22,0x1C},
-  {0x7F,0x49,0x49,0x49,0x41}, {0x7F,0x09,0x09,0x09,0x01}, {0x3E,0x41,0x49,0x49,0x7A}, {0x7F,0x08,0x08,0x08,0x7F},
-  {0x00,0x41,0x7F,0x41,0x00}, {0x20,0x40,0x41,0x3F,0x01}, {0x7F,0x08,0x14,0x22,0x41}, {0x7F,0x40,0x40,0x40,0x40},
-  {0x7F,0x02,0x0C,0x02,0x7F}, {0x7F,0x04,0x08,0x10,0x7F}, {0x3E,0x41,0x41,0x41,0x3E}, {0x7F,0x09,0x09,0x09,0x06},
-  {0x3E,0x41,0x51,0x21,0x5E}, {0x7F,0x09,0x19,0x29,0x46}, {0x46,0x49,0x49,0x49,0x31}, {0x01,0x01,0x7F,0x01,0x01},
-  {0x3F,0x40,0x40,0x40,0x3F}, {0x1F,0x20,0x40,0x20,0x1F}, {0x3F,0x40,0x38,0x40,0x3F}, {0x63,0x14,0x08,0x14,0x63},
-  {0x07,0x08,0x70,0x08,0x07}, {0x61,0x51,0x49,0x45,0x43}
-};
-static int gbGlyph(char c) {
-  if (c >= 'a' && c <= 'z') c -= 32;
-  if (c >= 'A' && c <= 'Z') return 14 + (c - 'A');
-  if (c >= '0' && c <= '9') return 4 + (c - '0');
-  if (c == '!') return 1;
-  if (c == '#') return 2;
-  if (c == '-') return 3;
-  return 0;
-}
-/*
- * Which letter of a message lights the pixel at height h / turn fraction az, or -1.
- * The text is 7 strand wraps tall: each wrap of the spiral is one row of letter dots, with row 0 at
- * rowTop (in wraps). cols = letter dot columns around the whole tree (fewer = bigger letters),
- * scroll = how far the text has moved (in columns). flip reverses the direction for strands wound the
- * other way. The message repeats around the tree with a gap; the seam where rows meet is at az = 0.
- */
-static int gbTextAt(const char* s, int n, float h, float az, float N, float rowTop, float cols, float scroll, bool flip) {
-  const float y = rowTop - h * N;
-  if (y < 0.0f || y >= 7.0f || n <= 0) return -1;
-  const int row = (int)y;
-  const int P = n * 6 + 8;
-  int c = (int)floorf((flip ? 1.0f - az : az) * cols + scroll) % P;
-  if (c < 0) c += P;
-  const int ch = c / 6, cx = c % 6;
-  if (ch >= n || cx == 5) return -1;
-  const uint8_t bits = pgm_read_byte(&gbFont[gbGlyph(s[ch])][cx]);
-  return ((bits >> row) & 1) ? ch : -1;
-}
-// top row (in wraps) for text centered at height hc; a whole number puts the row seam at az = 0
-static inline float gbRowTop(float hc, float N) { return floorf(hc * N + 3.5f); }
 // the shared "we won" look: blue with turning maize stripes and maize / white glitter
 static uint32_t gbVictory(int i, float h, float az, float tt, float spin, float glit, uint32_t maize, uint32_t blue) {
   uint32_t c = hwMix(hwColor(blue, 0.7f), maize, gbStripe(az, h, 3.0f, 2.0f, -spin) * 0.9f);
@@ -13652,221 +13607,172 @@ static uint32_t gbVictory(int i, float h, float az, float tt, float spin, float 
 }
 
 /*
- * Go Blue Message: big maize letters scroll around a dark blue tree: GO BLUE, HAIL TO THE VICTORS,
- * BEAT STATE, MICHIGAN #1 in turn. With "Use segment name" on, it scrolls the segment's name instead,
- * so you can type your own message in WLED (letters, numbers, ! # - and spaces).
+ * Go Blue Sparkle Wipe: the whole tree wipes from blue to maize to blue, over and over. A dense band of
+ * sparkles rides the edge and a trail of sparkles flashes white and settles into the new color behind
+ * it. While a color holds, the tree glitters (maize glitter on blue, white glitter on maize).
+ * It can alternate direction each time or lean the edge into a wave around the tree.
  */
-static const char* const gbMessages[] = { "GO BLUE", "HAIL TO THE VICTORS", "BEAT STATE", "MICHIGAN #1" };
-struct GbMsg { uint32_t last; float tt, scroll, spin; uint8_t idx; };
+struct GbWipe { uint32_t last; float tt, F, hold; uint8_t phase, idx, prev, dir; };
 
-void mode_goblue_message(void) {
+void mode_goblue_wipe(void) {
   const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbMsg))) { mode_static(); return; }
-  GbMsg* st = reinterpret_cast<GbMsg*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbMsg)); st->last = strip.now; }
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbWipe))) { mode_static(); return; }
+  GbWipe* st = reinterpret_cast<GbWipe*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbWipe)); st->last = strip.now; st->phase = 1; st->idx = st->prev = 1; st->hold = 9999.0f; }
   const float dts = hwFrame(st->last, st->tt), tt = st->tt;
   const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF);
-  const char* msg = gbMessages[st->idx % 4];
-  if (SEGMENT.check1 && SEGMENT.name && SEGMENT.name[0]) msg = SEGMENT.name;
-  const int n = min((int)strlen(msg), 48);
-  const float cols = 90.0f - SEGMENT.custom2 / 255.0f * 60.0f;
-  const float P = (float)(n * 6 + 8);
-  const float cycle = P * max(2.0f, ceilf(cols / P));   // show each message for a couple of passes
-  st->scroll += dts * (4.0f + SEGMENT.speed / 255.0f * 30.0f);
-  if (st->scroll >= cycle) { st->scroll = 0.0f; st->idx = (st->idx + 1) % 4; }
-  st->spin += dts * 0.2f;
-  if (st->spin > 1000.0f) st->spin -= 1000.0f;
-  const float textK = hwSmooth(min(st->scroll, cycle - st->scroll) / 6.0f);
-  const float rowTop = gbRowTop(0.2f + SEGMENT.custom1 / 255.0f * 0.6f, N);
-  const float glit = SEGMENT.intensity / 255.0f * 2.5f;
+  const uint32_t c[2] = { fdOr(SEGCOLOR(0), 0xFFB800), fdOr(SEGCOLOR(1), 0x0028FF) };
+  const uint32_t spk = fdOr(SEGCOLOR(2), WHITE);
+  const float w = 0.03f + SEGMENT.custom1 / 255.0f * 0.15f;
+  const float tilt = SEGMENT.check2 ? 0.12f : 0.0f;
+  const float holdT = 0.5f + SEGMENT.custom2 / 255.0f * 9.5f;
+  const float amt = SEGMENT.intensity / 255.0f;
 
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = fdAz(h, N);
-    const float y = rowTop - h * N;
-    const bool band = y > -1.0f && y < 8.0f;                 // darker behind the letters so they read
-    uint32_t col = hwColor(blue, band ? 0.18f : 0.4f);
-    if (!band) col = hwMix(col, hwColor(maize, 0.5f), gbStripe(az, h, 2.0f, 3.0f, -st->spin) * 0.35f);
-    if (SEGMENT.check3 && !band) { const float g = xmTwinkle(i, tt, glit * 0.5f, 711); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g)); }
-    if (gbTextAt(msg, n, h, az, N, rowTop, cols, st->scroll, SEGMENT.check2) >= 0) {
-      uint32_t t = hwColor(maize, 0.85f + 0.15f * sin_approx(tt * 3.0f + az * HW_TAU));
-      const float g = xmTwinkle(i, tt * 1.5f, glit, 713); if (g > 0.0f) t = color_add(t, hwColor(WHITE, g * 0.8f));
-      col = hwMix(col, t, textK);
-    }
-    SEGMENT.setPixelColor(i, col);
-  }
-}
-static const char _data_FX_MODE_GOBLUE_MESSAGE[] PROGMEM = "Go Blue Message@Scroll speed,Glitter,Text height,Letter size,Tree wraps,Use segment name,Flip text,Background glitter;Maize,Blue;;1;sx=90,ix=90,c1=120,c2=110,c3=12,o3=1,k0=FFB800,k1=0028FF";
-
-/*
- * Go Blue Scoreboard: a scoreboard scrolls around the tree, MICH in bright maize and MSU 0 in a dim,
- * sputtering green. Michigan keeps scoring: TOUCHDOWN! flashes across the tree with fireworks at the tip
- * and the score jumps by 7. Michigan State never scores. At the final score the tree reads
- * MICHIGAN WINS with the final score and celebrates, then a new game starts.
- */
-struct GbScore { uint32_t last; float tt, scroll, phT, spin; uint8_t phase, um, n, bursts; FdP p[90]; };
-
-void mode_goblue_scoreboard(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbScore))) { mode_static(); return; }
-  GbScore* st = reinterpret_cast<GbScore*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbScore)); st->last = strip.now; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
-  const float pace = 14.0f - SEGMENT.intensity / 255.0f * 10.0f;     // seconds between touchdowns
-  const uint8_t winScore = 7 * (3 + SEGMENT.custom1 * 8 / 255);          // 21..77
-  const float cols = 90.0f - SEGMENT.custom2 / 255.0f * 60.0f;
-  const bool flip = SEGMENT.check3;
-
-  st->phT += dts;
-  st->spin += dts * 0.3f;
-  if (st->spin > 1000.0f) st->spin -= 1000.0f;
-  if (st->phase == 0 && st->phT > pace) {                               // touchdown!
-    st->phase = 1; st->phT = 0.0f; st->um += 7; st->scroll = 0.0f; st->bursts = 0;
-  } else if (st->phase == 1 && st->phT > 3.0f) {
-    st->phT = 0.0f; st->scroll = 0.0f;
-    st->phase = st->um >= winScore ? 2 : 0; st->bursts = 0;
-  } else if (st->phase == 2 && st->phT > 14.0f) {
-    st->phase = 3; st->phT = 0.0f;
-  } else if (st->phase == 3 && st->phT > 1.5f) {
-    st->phase = 0; st->phT = 0.0f; st->um = 0; st->scroll = 0.0f;
-  }
-  // fireworks at the tip: three bursts per touchdown, more at the end
-  if (SEGMENT.check1 && (st->phase == 1 || st->phase == 2)) {
-    const float every = st->phase == 1 ? 0.45f : 0.9f;
-    if (st->phT > st->bursts * every && st->bursts < 30) {
-      st->bursts++;
-      gbBurst(st->p, st->n, 90, 0.8f + 0.17f * hwRand(), hwRand() * HW_TAU, 30, 0.35f, 0.08f);
-    }
-  }
-  st->scroll += dts * (4.0f + SEGMENT.speed / 255.0f * 30.0f);
-  if (st->scroll > 100000.0f) st->scroll = 0.0f;
-
-  char msg[40];
-  int msu = -1;                                                         // first letter shown in green
-  if (st->phase == 0) { const int k = snprintf(msg, sizeof(msg), "MICH %d   ", st->um); msu = k; snprintf(msg + k, sizeof(msg) - k, "MSU 0"); }
-  else if (st->phase == 1) snprintf(msg, sizeof(msg), "TOUCHDOWN!");
-  else snprintf(msg, sizeof(msg), "MICHIGAN WINS  %d-0", st->um);
-  const int n = strlen(msg);
-  const float rowTop = gbRowTop(0.45f, N);
-  const bool tdFlash = st->phase == 1 && SEGMENT.check2 && st->phT < 2.0f;
-  const bool flashM = ((int)(st->phT * 5.0f) & 1) == 0;
-  const float out = st->phase == 3 ? 1.0f - hwSmooth(st->phT / 1.5f) : 1.0f;
-  const float sputter = 0.25f + 0.2f * hwNoise(tt * 4.0f, 3.0f) * (hw_random8() < 20 ? 0.2f : 1.0f);
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = fdAz(h, N);
-    const float y = rowTop - h * N;
-    const bool band = y > -1.0f && y < 8.0f;
-    uint32_t col;
-    if (st->phase == 2) col = band ? hwColor(blue, 0.2f) : gbVictory(i, h, az, tt, st->spin, 1.8f, maize, blue);
-    else col = hwColor(blue, band ? 0.15f : 0.35f);
-    if (tdFlash && !band) col = hwMix(col, flashM ? maize : blue, 0.7f);
-    const int ch = gbTextAt(msg, n, h, az, N, rowTop, cols, st->scroll, flip);
-    if (ch >= 0) {
-      if (msu >= 0 && ch >= msu) col = hwColor(green, sputter);
-      else if (st->phase == 1) col = flashM ? WHITE : maize;
-      else {
-        col = hwColor(maize, 0.9f);
-        const float g = xmTwinkle(i, tt * 1.5f, 1.0f, 721); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g * 0.7f));
-      }
-    }
-    SEGMENT.setPixelColor(i, out < 1.0f ? hwColor(col, out) : col);
-  }
-  gbSparks(st->p, st->n, dts, 0.1f, len, N, maize, WHITE, BLACK, 1.0f, out);
-}
-static const char _data_FX_MODE_GOBLUE_SCOREBOARD[] PROGMEM = "Go Blue Scoreboard@Scroll speed,Game pace,Final score,Letter size,Tree wraps,Fireworks,Touchdown flashes,Flip text;Maize,Blue,Green;;1;sx=90,ix=110,c1=130,c2=110,c3=12,o1=1,o2=1,k0=FFB800,k1=0028FF,k2=00A838";
-
-/*
- * Go Blue Claw Marks: the tree is Spartan green & white. A wolverine claw rakes it: three tapered slashes
- * tear across the tree white-hot and cool to maize with blue edges, throwing off green sparks. The marks
- * stay and pile up until the green is in shreds, then the last of it crumbles away pixel by pixel into
- * a maize & blue celebration, and the tree heals green for the next round.
- */
-struct GbStrike { float h, a, th, age; };
-struct GbClaw { uint32_t last; float tt, next, phT, spin; uint8_t phase, ns, n; GbStrike s[10]; FdP p[90]; };
-
-void mode_goblue_claw(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbClaw))) { mode_static(); return; }
-  GbClaw* st = reinterpret_cast<GbClaw*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbClaw)); st->last = strip.now; st->next = 1.5f; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
-  const float size = 0.6f + SEGMENT.intensity / 255.0f * 0.9f;
-  const float L = 0.3f * size, w = 0.014f * size, gap = 0.04f * size;
-  const uint8_t maxS = 3 + SEGMENT.custom1 * 7 / 255;                  // strikes to win (3..10)
-  const float glit = SEGMENT.custom2 / 255.0f * 2.5f;
-
-  st->phT += dts;
-  st->spin += dts * 0.3f;
-  if (st->spin > 1000.0f) st->spin -= 1000.0f;
-  for (int k = 0; k < st->ns; k++) st->s[k].age += dts;
   if (st->phase == 0) {
-    st->next -= dts * (0.4f + SEGMENT.speed / 255.0f * 1.6f);
-    if (st->next <= 0.0f && st->ns < maxS && st->ns < 10) {
-      GbStrike& s = st->s[st->ns++];
-      s.h = 0.15f + 0.7f * hwRand(); s.a = hwRand() * HW_TAU; s.age = 0.0f;
-      s.th = (hwRand() < 0.5f ? 1.0f : -1.0f) * (0.6f + 0.5f * hwRand());   // a steep diagonal rake
-      if (SEGMENT.check2) gbBurst(st->p, st->n, 90, s.h, s.a, 24, 0.3f, 0.05f);
-      st->next = 1.5f + hwRand();
+    st->F += dts * (0.08f + SEGMENT.speed / 255.0f * 0.6f);
+    if (st->F > 1.0f + tilt + 3.0f * w) { st->phase = 1; st->hold = 0.0f; }
+  } else {
+    st->hold += dts;
+    if (st->hold > holdT) {
+      st->phase = 0; st->prev = st->idx; st->idx ^= 1; st->F = -tilt - 3.0f * w;
+      st->dir = SEGMENT.check1 ? st->dir ^ 1 : 0;
     }
-    if (st->ns >= maxS && st->s[st->ns - 1].age > 1.5f) { st->phase = 1; st->phT = 0.0f; }
-  } else if (st->phase == 1 && st->phT > 2.5f) { st->phase = 2; st->phT = 0.0f; }
-  else if (st->phase == 2 && st->phT > 8.0f) { st->phase = 3; st->phT = 0.0f; }
-  else if (st->phase == 3 && st->phT > 1.5f) { st->phase = 0; st->phT = 0.0f; st->ns = 0; st->next = 1.0f; }
+  }
+  const uint32_t now = c[st->idx], old = c[st->prev];
+  const uint32_t glitC = st->idx ? c[0] : spk;                        // maize glitter on blue, white on maize
 
-  float shake = 0.0f;
-  if (SEGMENT.check3) for (int k = 0; k < st->ns; k++) if (st->s[k].age < 0.2f) shake = max(shake, 1.0f - st->s[k].age / 0.2f);
-  const float fear = 1.0f - 0.45f * (float)st->ns / (float)maxS;       // the green fades as it gets shredded
-  const float reach = L * 0.6f + gap * 2.0f;
+  for (int i = 0; i < len; i++) {
+    const float h = hwHeight(i, len);
+    uint32_t col;
+    if (st->phase == 0) {
+      const float y = (st->dir ? 1.0f - h : h) + tilt * sin_approx(HW_TAU * N * h);
+      const float d = (y - st->F) / w;                                 // < 0 = already wiped
+      col = hwColor(hwMix(now, old, hwSmooth(d * 0.5f + 0.5f)), 0.8f);
+      const float glow = hwGauss(d * d);
+      col = color_add(col, hwColor(spk, 0.25f * glow));
+      const float trail = d < 0.0f ? expf(d * 0.5f) : 0.0f;          // sparkles settling behind the edge
+      const float s = xmTwinkle(i, tt * 2.0f, amt * (8.0f * glow + 2.0f * trail), 801);
+      if (s > 0.0f) col = color_add(col, hwColor(SEGMENT.check3 ? hwMix(now, spk, s) : hwMix(now, spk, 0.5f), s));
+    } else {
+      col = hwColor(now, 0.8f);
+      const float s = xmTwinkle(i, tt * 1.4f, 0.2f + amt * 0.8f, 803);
+      if (s > 0.0f) col = color_add(col, hwColor(glitC, s));
+    }
+    SEGMENT.setPixelColor(i, col);
+  }
+}
+static const char _data_FX_MODE_GOBLUE_WIPE[] PROGMEM = "Go Blue Sparkle Wipe@Wipe speed,Sparkles,Edge width,Hold time,Tree wraps,Alternate direction,Wavy edge,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=80,c2=70,c3=12,o1=1,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
+
+/*
+ * Go Blue Spin Wipe: maize sweeps around the trunk like a hand on a clock, with a sparkling edge, until the
+ * whole tree is maize; then blue sweeps around the same way, and so on. Twist turns the edge into a
+ * spiral that winds up the tree; Two hands sweeps from both sides at once.
+ */
+struct GbSpin { uint32_t last; float tt, q, hold; uint8_t phase, idx, prev; };
+
+void mode_goblue_spin(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbSpin))) { mode_static(); return; }
+  GbSpin* st = reinterpret_cast<GbSpin*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbSpin)); st->last = strip.now; st->phase = 1; st->idx = st->prev = 1; st->hold = 9999.0f; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t c[2] = { fdOr(SEGCOLOR(0), 0xFFB800), fdOr(SEGCOLOR(1), 0x0028FF) };
+  const uint32_t spk = fdOr(SEGCOLOR(2), WHITE);
+  const float hands = SEGMENT.check1 ? 2.0f : 1.0f;
+  const float twist = SEGMENT.custom1 / 255.0f * 2.0f;                // turns of spiral from bottom to top
+  const float holdT = 0.5f + SEGMENT.custom2 / 255.0f * 9.5f;
+  const float amt = SEGMENT.intensity / 255.0f;
+  const float w = 0.035f;                                              // edge width in tree heights
+
+  if (st->phase == 0) {
+    st->q += dts * (0.05f + SEGMENT.speed / 255.0f * 0.45f);
+    if (st->q > 1.15f) { st->phase = 1; st->hold = 0.0f; }
+  } else {
+    st->hold += dts;
+    if (st->hold > holdT) { st->phase = 0; st->prev = st->idx; st->idx ^= 1; st->q = 0.0f; }
+  }
+  const uint32_t now = c[st->idx], old = c[st->prev];
+  const uint32_t glitC = st->idx ? c[0] : spk;
 
   for (int i = 0; i < len; i++) {
     const float h = hwHeight(i, len), az = fdAz(h, N);
-    uint32_t base = hwColor(green, 0.5f * fear * (0.7f + 0.3f * hwNoise(az * 6.0f, h * 8.0f + tt * 0.2f)));
-    float g = xmTwinkle(i, tt, 0.6f * fear, 731); if (g > 0.0f) base = color_add(base, hwColor(WHITE, g * 0.7f));
-    uint32_t col = base;
-    if (st->phase <= 1 || st->phase == 3) {
-      float cov = 0.0f, hot = 0.0f;
-      for (int k = 0; k < st->ns; k++) {
-        const GbStrike& s = st->s[k];
-        const float dy = h - s.h;
-        if (fabsf(dy) > reach) continue;
-        const float dx = hwAngDiff(HW_TAU * N * h, s.a) * fdRad(h);
-        if (fabsf(dx) > reach) continue;
-        const float cs = cos_approx(s.th), sn = sin_approx(s.th);
-        const float u = dx * cs + dy * sn, v = -dx * sn + dy * cs;
-        const float prog = hwClamp01(s.age / 0.22f), uEnd = -0.5f * L + L * prog;
-        if (u < -0.5f * L || u > uEnd) continue;
-        const float q = 2.0f * u / L, taper = 1.0f - q * q;
-        for (int c = -1; c <= 1; c++) {
-          const float dv = fabsf(v - c * gap) / (w * taper + 0.003f);
-          if (dv >= 1.0f) continue;
-          const float cv = 1.0f - dv * dv;
-          if (cv > cov) { cov = cv; hot = expf(-s.age * 1.5f) + (prog < 1.0f && uEnd - u < 0.03f ? 1.0f : 0.0f); }
-        }
-      }
-      if (cov > 0.0f) {
-        uint32_t sc = hwMix(hwColor(blue, 0.9f), maize, hwSmooth(cov * 1.6f));
-        if (SEGMENT.check1) sc = hwMix(sc, WHITE, hot);
-        col = hwMix(base, sc, hwSmooth(cov * 3.0f));
-      }
+    uint32_t col;
+    if (st->phase == 0) {
+      const float u = xmFrac(hands * ((SEGMENT.check2 ? -az : az) - twist * h));   // 0..1 around the tree from the start line
+      const float d = (u - st->q) / hands * HW_TAU * fdRad(h) / w;               // edge distance, < 0 = swept
+      col = hwColor(hwMix(now, old, hwSmooth(d * 0.5f + 0.5f)), 0.8f);
+      const float glow = hwGauss(d * d);
+      col = color_add(col, hwColor(spk, 0.25f * glow));
+      const float trail = d < 0.0f ? expf(d * 0.3f) : 0.0f;
+      const float s = xmTwinkle(i, tt * 2.0f, amt * (8.0f * glow + 2.0f * trail), 811);
+      if (s > 0.0f) col = color_add(col, hwColor(SEGMENT.check3 ? hwMix(now, spk, s) : hwMix(now, spk, 0.5f), s));
+    } else {
+      col = hwColor(now, 0.8f);
+      const float s = xmTwinkle(i, tt * 1.4f, 0.2f + amt * 0.8f, 813);
+      if (s > 0.0f) col = color_add(col, hwColor(glitC, s));
     }
-    const uint32_t vic = gbVictory(i, h, az, tt, st->spin, 0.6f + glit, maize, blue);
-    if (st->phase == 1) {                                               // the green crumbles away
-      const float t0 = hwHash2(i, 7) * 2.2f, d = st->phT - t0;
-      if (d > 0.0f) col = d < 0.15f ? color_add(vic, hwColor(WHITE, 1.0f - d / 0.15f)) : vic;
-    } else if (st->phase == 2) col = vic;
-    else if (st->phase == 3) col = hwMix(vic, base, hwSmooth(st->phT / 1.5f));
-    if (shake > 0.0f) col = color_add(col, hwColor(WHITE, 0.35f * shake));
     SEGMENT.setPixelColor(i, col);
   }
-  if (st->phase == 2) hwBlob(len, N, 0.985f, 0.0f, 0.03f, 0.2f, maize, 0.7f + 0.5f * fabsf(sin_approx(tt * 4.0f)));
-  gbSparks(st->p, st->n, dts, 0.2f, len, N, green, WHITE, BLACK, 1.0f, 1.2f);
 }
-static const char _data_FX_MODE_GOBLUE_CLAW[] PROGMEM = "Go Blue Claw Marks@Strike speed,Claw size,Strikes to win,Glitter,Tree wraps,White-hot slashes,Green sparks,Strike flash;Maize,Blue,Green;;1;sx=110,ix=140,c1=100,c2=100,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
+static const char _data_FX_MODE_GOBLUE_SPIN[] PROGMEM = "Go Blue Spin Wipe@Spin speed,Sparkles,Twist,Hold time,Tree wraps,Two hands,Reverse,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=90,c2=70,c3=12,o1=0,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
+
+/*
+ * Go Blue Glitter Fill: the tree is blue. One pixel at a time flashes white and settles into maize, until
+ * the whole tree has turned maize one sparkle at a time; then it fills back to blue the same way. Bottom
+ * to top makes it fill up the tree like a rising tide of glitter; Finale burst sets off a shower of
+ * sparks from the tip and a flash each time a color completes.
+ */
+struct GbFill { uint32_t last; float tt, t; uint16_t round; uint8_t phase, idx, prev, n; FdP p[60]; };
+
+void mode_goblue_fill(void) {
+  const uint16_t len = SEGLEN;
+  if (len < 2 || !SEGENV.allocateData(sizeof(GbFill))) { mode_static(); return; }
+  GbFill* st = reinterpret_cast<GbFill*>(SEGENV.data);
+  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbFill)); st->last = strip.now; st->phase = 1; st->idx = st->prev = 1; st->t = 9999.0f; }
+  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
+  const float N = hwWraps();
+  const uint32_t c[2] = { fdOr(SEGCOLOR(0), 0xFFB800), fdOr(SEGCOLOR(1), 0x0028FF) };
+  const uint32_t spk = fdOr(SEGCOLOR(2), WHITE);
+  const float T = 1.5f + (255 - SEGMENT.speed) / 255.0f * 12.0f;     // seconds for the whole tree to change
+  const float tw = 0.25f + SEGMENT.custom1 / 255.0f * 1.5f;           // how long each pixel's sparkle lasts
+  const float holdT = 0.5f + SEGMENT.intensity / 255.0f * 14.5f;
+  const float idle = SEGMENT.custom2 / 255.0f * 1.5f;
+
+  st->t += dts;
+  if (st->phase == 0 && st->t > T + tw) {
+    st->phase = 1; st->t = 0.0f;
+    if (SEGMENT.check3) gbBurst(st->p, st->n, 60, 0.96f, 0.0f, 60, 0.35f, 0.1f);
+  } else if (st->phase == 1 && st->t > holdT) {
+    st->phase = 0; st->t = 0.0f; st->prev = st->idx; st->idx ^= 1; st->round++;
+  }
+  const uint32_t now = c[st->idx], old = c[st->prev];
+  const uint32_t base = hwColor(now, 0.8f);
+  const uint32_t glitC = st->idx ? c[0] : spk;
+  const float flash = (st->phase == 1 && SEGMENT.check3) ? expf(-st->t * 5.0f) : 0.0f;
+
+  for (int i = 0; i < len; i++) {
+    uint32_t col = base;
+    if (st->phase == 0) {
+      const float r = hwHash2(i, st->round);
+      const float u = SEGMENT.check1 ? 0.75f * hwHeight(i, len) + 0.25f * r : r;   // when this pixel changes (0..1)
+      const float e = (st->t - u * T) / tw;
+      if (e < 0.0f) col = hwColor(old, 0.8f);
+      else if (e < 1.0f) {
+        const float gv = e < 0.15f ? e / 0.15f : 1.0f - (e - 0.15f) / 0.85f;
+        const uint32_t sp = SEGMENT.check2 ? hwMix(spk, now, hwSmooth(e)) : hwMix(now, spk, 0.5f);
+        col = hwMix(base, sp, gv);
+      }
+    } else if (idle > 0.0f) {
+      const float s = xmTwinkle(i, tt * 1.4f, idle, 821);
+      if (s > 0.0f) col = color_add(col, hwColor(glitC, s));
+    }
+    if (flash > 0.0f) col = color_add(col, hwColor(spk, 0.5f * flash));
+    SEGMENT.setPixelColor(i, col);
+  }
+  gbSparks(st->p, st->n, dts, 0.15f, len, N, c[0], spk, BLACK, 1.0f, 1.2f);
+}
+static const char _data_FX_MODE_GOBLUE_FILL[] PROGMEM = "Go Blue Glitter Fill@Fill speed,Hold time,Twinkle length,Idle glitter,Tree wraps,Bottom to top,White hot,Finale burst;Maize,Blue,Sparkle;;1;sx=120,ix=70,c1=90,c2=90,c3=12,o1=0,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
 
 /*
  * Go Blue Meltdown: a proud green & white tree starts melting from the tip down, dripping green as it
@@ -14001,9 +13907,9 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_TREE_MAPPER, &mode_tree_mapper, _data_FX_MODE_TREE_MAPPER);
   addEffect(FX_MODE_GOBLUE_TAKEOVER, &mode_goblue_takeover, _data_FX_MODE_GOBLUE_TAKEOVER);
   addEffect(FX_MODE_GOBLUE_MARCH, &mode_goblue_march, _data_FX_MODE_GOBLUE_MARCH);
-  addEffect(FX_MODE_GOBLUE_MESSAGE, &mode_goblue_message, _data_FX_MODE_GOBLUE_MESSAGE);
-  addEffect(FX_MODE_GOBLUE_SCOREBOARD, &mode_goblue_scoreboard, _data_FX_MODE_GOBLUE_SCOREBOARD);
-  addEffect(FX_MODE_GOBLUE_CLAW, &mode_goblue_claw, _data_FX_MODE_GOBLUE_CLAW);
+  addEffect(FX_MODE_GOBLUE_WIPE, &mode_goblue_wipe, _data_FX_MODE_GOBLUE_WIPE);
+  addEffect(FX_MODE_GOBLUE_SPIN, &mode_goblue_spin, _data_FX_MODE_GOBLUE_SPIN);
+  addEffect(FX_MODE_GOBLUE_FILL, &mode_goblue_fill, _data_FX_MODE_GOBLUE_FILL);
   addEffect(FX_MODE_GOBLUE_MELTDOWN, &mode_goblue_meltdown, _data_FX_MODE_GOBLUE_MELTDOWN);
 
   // --- 1D non-audio effects ---
