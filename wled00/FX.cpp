@@ -13778,7 +13778,7 @@ void mode_3d_uofm_glitter_breath(void) {
     t3Set(i, t3Glitter(p, T, A, G, amt * (1.6f - b)));                // more glitter while the tree is dim
   }
 }
-static const char _data_FX_MODE_3D_UOFM_GLITTER_BREATH[] PROGMEM = "3D UofM Glitter Breath@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+static const char _data_FX_MODE_3D_UOFM_GLITTER_BREATH[] PROGMEM = "UofM Glitter Breath@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
 
 // --- 3D UofM Plasma: slow 3D plasma clouds of blue with hot maize cores drift through the tree ---
 void mode_3d_uofm_plasma(void) {
@@ -13799,7 +13799,7 @@ void mode_3d_uofm_plasma(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_3D_UOFM_PLASMA[] PROGMEM = "3D UofM Plasma@!,Cloud size;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+static const char _data_FX_MODE_3D_UOFM_PLASMA[] PROGMEM = "UofM Plasma@!,Cloud size;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
 
 // --- 3D UofM Ombre Glitter: a smooth maize-to-blue blend rolls up the tree so every light keeps changing, all glittering ---
 void mode_3d_uofm_ombre_glitter(void) {
@@ -13814,7 +13814,7 @@ void mode_3d_uofm_ombre_glitter(void) {
     t3Set(i, t3Glitter(p, T, t3Lerp(blue, maize, m), T3_WHITE, amt));
   }
 }
-static const char _data_FX_MODE_3D_UOFM_OMBRE_GLITTER[] PROGMEM = "3D UofM Ombre Glitter@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+static const char _data_FX_MODE_3D_UOFM_OMBRE_GLITTER[] PROGMEM = "UofM Ombre Glitter@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
 
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
