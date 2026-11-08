@@ -13743,6 +13743,98 @@ void mode_3d_uofm_back_rush(void) {
 }
 static const char _data_FX_MODE_3D_UOFM_BACK_RUSH[] PROGMEM = "3D UofM Back Rush@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
 
+// --- 3D UofM Goal Line Stand: green drives in from the street, blue holds at the trunk, then blue drives it out ---
+void mode_3d_uofm_goal_line_stand(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float t = t3Frac(T / 9.0f), front = t3ConeR(0.0f) + 0.04f;   // just past the front of the tree
+  float g = -0.02f; int ph = 1;                                      // g = where green starts (toward the street)
+  if (t < 0.32f)      { ph = 0; g = front - (front + 0.02f) * powf(t / 0.32f, 0.8f); }
+  else if (t < 0.5f)  { g = -0.02f + 0.018f * sin_t(T * 16.0f); }    // the stand: the line shoves back and forth
+  else if (t < 0.78f) { ph = 2; g = -0.02f + (front + 0.02f) * powf((t - 0.5f) / 0.28f, 1.3f); }
+  else                  ph = 3;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    T3C c;
+    if (ph == 3) {                                                   // touchdown: maize waves roll out to the street
+      c = sin_t(p.z * 32.0f - T * 9.0f) > 0.8f ? maize : t3UmSpark(p, T, blue, maize, 0.12f);
+    } else {
+      const float e = p.z - g;
+      if (fabsf(e) < 0.03f)  c = t3Sparkle(p, T, ph == 1 ? 0.55f : 0.35f) ? T3_WHITE : maize;   // the line of scrimmage
+      else if (e > 0.0f)     c = t3Msu(p, T, ph == 2 ? t3Mul(green, 0.7f) : green);
+      else                   c = t3UmSpark(p, T, ph == 0 ? t3Mul(blue, 0.75f) : blue, maize, 0.05f);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_GOAL_LINE_STAND[] PROGMEM = "3D UofM Goal Line Stand@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Helix Takeover: maize and blue comets corkscrew up the trunk and paint the green away in twisting stripes ---
+void mode_3d_uofm_helix_takeover(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float t = t3Frac(T / 9.0f), turns = 3.5f;
+  const float hy = t3Clamp(t / 0.6f) * 1.08f;                       // height the comets have reached
+  const float fade = t > 0.9f ? (1.0f - t) / 0.1f : 1.0f;
+  float hx[2], hz[2];
+  for (int j = 0; j < 2; j++) {
+    const float a = hy * turns * T3_TAU + j * 3.14159265f, r = t3ConeR(hy) * 0.95f;
+    hx[j] = cos_approx(a) * r; hz[j] = sin_approx(a) * r;
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    if (t < 0.62f) {
+      bool head = false;
+      for (int j = 0; j < 2 && !head; j++) {
+        const float dx = p.x - hx[j], dy = p.y - hy, dz = p.z - hz[j];
+        head = dx * dx + dy * dy + dz * dz < 0.06f * 0.06f;
+      }
+      if (head) { t3Set(i, T3_WHITE); continue; }
+    }
+    // twisting two-start stripes that follow the comets' path, spinning once the tree is painted
+    const float spin = t > 0.6f ? (t - 0.6f) * 9.0f : 0.0f;
+    const float s = t3Frac(2.0f * (p.a / T3_TAU - p.y * turns) + spin);
+    T3C stripe = s < 0.4f ? maize : blue;
+    if (t3Sparkle(p, T, 0.05f)) stripe = s < 0.4f ? T3_WHITE : maize;
+    T3C c;
+    if (p.y < hy - 0.03f)      c = t3Mul(stripe, fade);
+    else if (p.y < hy + 0.02f) c = t3Sparkle(p, T, 0.5f) ? T3_WHITE : maize;      // glowing edge where the paint is going on
+    else                       c = t3Msu(p, T, green);
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_HELIX_TAKEOVER[] PROGMEM = "3D UofM Helix Takeover@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Halo Drop: a wobbling maize halo falls from the top, turning the tree blue, then maize rings rise back up ---
+void mode_3d_uofm_halo_drop(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float t = t3Frac(T / 8.0f);
+  const float ry = 1.06f - t3Clamp(t / 0.45f) * 1.16f;               // halo height on the way down
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float wob = 0.045f * sin_t(p.a + T * 3.0f);                // the halo tilts and wobbles as it spins
+    T3C c;
+    if (t < 0.45f) {
+      const float e = p.y - (ry + wob);
+      if (fabsf(e) < 0.03f) c = t3Sparkle(p, T, 0.4f) ? T3_WHITE : maize;
+      else if (e > 0.0f)    c = t3UmSpark(p, T, blue, maize, 0.05f);
+      else                  c = t3Msu(p, T, green);
+    } else if (t < 0.88f) {                                          // victory: maize rings float up through the blue
+      const float v = t3Frac(p.y * 3.0f - wob * 3.0f - (t - 0.45f) * 9.0f);
+      c = v > 0.82f ? (t3Sparkle(p, T, 0.3f) ? T3_WHITE : maize) : t3UmSpark(p, T, blue, maize, 0.08f);
+    } else {                                                         // green seeps back in for the next drop
+      const float k = (t - 0.88f) / 0.12f;
+      c = t3Lerp(t3UmSpark(p, T, blue, maize, 0.08f), t3Msu(p, T, green), k);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_HALO_DROP[] PROGMEM = "3D UofM Halo Drop@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
   red = t3C(t3Or(SEGCOLOR(0), 0xDC0A14)); green = t3C(t3Or(SEGCOLOR(1), 0x0AAA28)); gold = t3C(t3Or(SEGCOLOR(2), 0xFFB428));
@@ -14384,6 +14476,9 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_3D_AURORA_CLOUDS, &mode_3d_aurora_clouds, _data_FX_MODE_3D_AURORA_CLOUDS);
   addEffect(FX_MODE_3D_UOFM_VICTORY_BURSTS, &mode_3d_uofm_victory_bursts, _data_FX_MODE_3D_UOFM_VICTORY_BURSTS);
   addEffect(FX_MODE_3D_UOFM_BACK_RUSH, &mode_3d_uofm_back_rush, _data_FX_MODE_3D_UOFM_BACK_RUSH);
+  addEffect(FX_MODE_3D_UOFM_GOAL_LINE_STAND, &mode_3d_uofm_goal_line_stand, _data_FX_MODE_3D_UOFM_GOAL_LINE_STAND);
+  addEffect(FX_MODE_3D_UOFM_HELIX_TAKEOVER, &mode_3d_uofm_helix_takeover, _data_FX_MODE_3D_UOFM_HELIX_TAKEOVER);
+  addEffect(FX_MODE_3D_UOFM_HALO_DROP, &mode_3d_uofm_halo_drop, _data_FX_MODE_3D_UOFM_HALO_DROP);
   addEffect(FX_MODE_3D_CHRISTMAS_MAGIC_WAND, &mode_3d_christmas_magic_wand, _data_FX_MODE_3D_CHRISTMAS_MAGIC_WAND);
   addEffect(FX_MODE_3D_CHRISTMAS_BACK_GLOW, &mode_3d_christmas_back_glow, _data_FX_MODE_3D_CHRISTMAS_BACK_GLOW);
   addEffect(FX_MODE_3D_CHRISTMAS_NORTH_STAR, &mode_3d_christmas_north_star, _data_FX_MODE_3D_CHRISTMAS_NORTH_STAR);
