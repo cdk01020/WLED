@@ -414,6 +414,16 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_UOFM_HELIX_TAKEOVER       163  // was Blurz (sound reactive, removed)
 #define FX_MODE_3D_UOFM_HALO_DROP            165  // was Waverly (sound reactive, removed)
 #define FX_MODE_3D_UOFM_FIREWORK_TAKEOVER    175  // was Swirl (sound reactive, removed)
+#define FX_MODE_3D_UOFM_TIDAL_WAVE           185  // was Rocktaves (sound reactive, removed)
+#define FX_MODE_3D_UOFM_LIGHTNING_STRIKE     186  // was Akemi (sound reactive, removed)
+#define FX_MODE_3D_UOFM_BLUE_FLOOD           197  // was PS Spray (sound reactive, removed)
+#define FX_MODE_3D_UOFM_PAINT_SPLATS         198  // was PS GEQ 2D (sound reactive, removed)
+#define FX_MODE_3D_UOFM_CORE_IGNITION        199  // was PS GEQ Nova (sound reactive, removed)
+#define FX_MODE_3D_UOFM_MAIZE_COMETS         201  // was PS Blobs (sound reactive, removed)
+#define FX_MODE_3D_UOFM_GYRO_BANDS           212  // was PS GEQ 1D (sound reactive, removed)
+#define FX_MODE_3D_UOFM_PLASMA               214  // was PS Sonic Stream (sound reactive, removed)
+#define FX_MODE_3D_UOFM_MAIZE_FOUNTAIN       215  // was PS Sonic Boom (sound reactive, removed)
+#define FX_MODE_3D_UOFM_CUBE_TWIST           216  // was PS Springy (sound reactive, removed)
 #define FX_MODE_3D_CHRISTMAS_MAGIC_WAND      155
 #define FX_MODE_3D_CHRISTMAS_BACK_GLOW       156
 #define FX_MODE_3D_CHRISTMAS_NORTH_STAR      157

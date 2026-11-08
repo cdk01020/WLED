@@ -13892,6 +13892,301 @@ void mode_3d_uofm_firework_takeover(void) {
 }
 static const char _data_FX_MODE_3D_UOFM_FIREWORK_TAKEOVER[] PROGMEM = "3D UofM Firework Takeover@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
 
+// --- more UofM 3D effects: five takeovers of a sparkling green and white tree, five in maize and blue only ---
+
+// sparkling green and white (the Michigan State side): soft white pixels and fast white twinkles over green
+static inline T3C t3MsuGW(const T3P& p, float T, T3C green) {
+  return t3Sparkle(p, T, 0.16f) ? T3C{230, 255, 235} : (t3Hash(p.i * 13U + 3U) < 0.18f ? T3C{120, 140, 125} : green);
+}
+// angle difference wrapped to -pi..pi
+static inline float t3AngD(float a) { a = fmodf(a + 3.14159265f, T3_TAU); if (a < 0.0f) a += T3_TAU; return a - 3.14159265f; }
+
+// --- 3D UofM Tidal Wave: a blue wave with maize foam rolls around the trunk and drowns the green, then the tree swirls ---
+void mode_3d_uofm_tidal_wave(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float t = t3Frac(T / 9.0f);
+  const float w = t3Clamp(t / 0.6f) * (T3_TAU + 1.6f);               // how far round the wave has rolled (radians)
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const T3C msu = t3MsuGW(p, T, green);
+    T3C c;
+    if (t < 0.6f) {
+      float rel = fmodf(p.a - 1.5708f, T3_TAU); if (rel < 0.0f) rel += T3_TAU;   // starts at the street side
+      const float behind = w - (1.0f - p.y) * 1.4f - rel;            // the top of the wave curls ahead of the bottom
+      if (behind > 0.35f)      c = t3UmSpark(p, T, blue, maize, 0.06f);
+      else if (behind > 0.0f)  c = t3Sparkle(p, T, 0.5f) ? T3_WHITE : maize;     // foam on the crest
+      else                     c = msu;
+    } else {
+      const float s = t3Frac(p.a / T3_TAU * 2.0f + p.y * 2.0f - T * 0.5f);   // whirlpool stripes
+      c = s < 0.15f ? maize : t3UmSpark(p, T, blue, maize, 0.06f);
+      if (t > 0.9f) c = t3Lerp(c, msu, (t - 0.9f) / 0.1f);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_TIDAL_WAVE[] PROGMEM = "3D UofM Tidal Wave@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Lightning Strike: maize bolts crack down the tree and each one turns a wedge of it blue ---
+void mode_3d_uofm_lightning_strike(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  constexpr int K = 10; constexpr float GAP = 0.8f, CYC = K * GAP + 2.0f;
+  const uint32_t cyc = (uint32_t)(T / CYC); const float tc = fmodf(T, CYC);
+  float aj[K], age[K]; float flash = 0.0f;
+  for (int j = 0; j < K; j++) {
+    aj[j] = (j * 0.618f + t3HashS(cyc * K + j, 0) * 0.25f) * T3_TAU;
+    age[j] = tc - j * GAP;
+    if (age[j] >= 0.0f && age[j] < 0.12f) flash = 1.0f - age[j] / 0.12f;   // the whole tree blinks on each strike
+  }
+  const float storm = tc - K * GAP;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const T3C msu = t3MsuGW(p, T, green);
+    T3C c = msu;
+    for (int j = 0; j < K; j++) {
+      if (age[j] < 0.0f) break;
+      const float da = fabsf(t3AngD(p.a - aj[j]));
+      const float width = 0.95f * t3Clamp((age[j] - 0.1f) / 0.45f);    // the claimed wedge spreads out from the bolt
+      if (da < width - 0.1f)  c = t3UmSpark(p, T, blue, maize, 0.06f);
+      else if (da < width)    c = t3Sparkle(p, T, 0.4f) ? T3_WHITE : maize;
+      if (age[j] < 0.2f) {                                            // the bolt: jagged, racing down from the top
+        const float jag = fabsf(t3AngD(p.a - aj[j] - 0.22f * sin_t(p.y * 23.0f + j * 3.0f)));
+        if (jag < 0.12f && p.y > 1.0f - age[j] / 0.08f) c = T3_WHITE;
+      }
+    }
+    if (storm > 0.0f) {                                               // after the last bolt: distant flickers in the blue
+      if (t3Hash(p.i * 7U + (uint32_t)(T * 6.0f) * 131U) < 0.02f) c = maize;
+      if (storm > 1.4f) c = t3Lerp(c, msu, (storm - 1.4f) / 0.6f);
+    }
+    t3Set(i, t3Add(c, t3Mul(maize, flash * 0.25f)));
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_LIGHTNING_STRIKE[] PROGMEM = "3D UofM Lightning Strike@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Blue Flood: wavy blue water rises up the tree with maize bubbles, holds, then drains ---
+void mode_3d_uofm_blue_flood(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float t = t3Frac(T / 9.0f);
+  float lvl = 1.12f;
+  if (t < 0.6f) lvl = -0.06f + t / 0.6f * 1.18f;
+  else if (t > 0.85f) lvl = 1.12f - (t - 0.85f) / 0.15f * 1.2f;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float h = lvl + 0.03f * sin_t(p.x * 25.0f + T * 3.0f) + 0.03f * sin_t(p.z * 22.0f - T * 2.4f);   // rolling surface
+    T3C c;
+    if (p.y < h - 0.03f) {
+      const bool bubble = t3Hash(p.i * 7U + 1U) < 0.3f && t3Frac(p.y * 4.0f - T * 0.8f + t3Hash(p.i * 3U)) < 0.07f;
+      c = bubble ? maize : t3UmSpark(p, T, blue, maize, 0.03f);
+    } else if (p.y < h + 0.03f) c = t3Sparkle(p, T, 0.45f) ? T3_WHITE : maize;    // foam line
+    else                        c = t3MsuGW(p, T, green);
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_BLUE_FLOOD[] PROGMEM = "3D UofM Blue Flood@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Paint Splats: blue paint balloons fly in from the street and splat on the tree, dripping down ---
+void mode_3d_uofm_paint_splats(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  constexpr int K = 9; constexpr float GAP = 0.9f, FLY = 0.35f, CYC = K * GAP + 2.5f;
+  const uint32_t cyc = (uint32_t)(T / CYC); const float tc = fmodf(T, CYC);
+  float cx[K], cy[K], cz[K], rj[K], tx[K], tz[K], age[K];
+  for (int j = 0; j < K; j++) {
+    const uint32_t s = cyc * K + j;
+    cy[j] = 0.12f + t3HashS(s, 0) * 0.72f;
+    const float a = (j * 0.618f + t3HashS(s, 1) * 0.2f) * T3_TAU, r = t3ConeR(cy[j]);
+    cx[j] = cos_approx(a) * r; cz[j] = sin_approx(a) * r;
+    tx[j] = -sin_approx(a); tz[j] = cos_approx(a);                    // sideways along the tree surface, for the drips
+    rj[j] = 0.13f + t3HashS(s, 2) * 0.08f;
+    age[j] = tc - j * GAP;
+  }
+  const float fin = tc - K * GAP;                                     // finale: a blue wash pours down from the top
+  const float wash = fin > 0.0f ? 1.05f - t3Clamp(fin / 1.2f) * 1.15f : 2.0f;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const T3C msu = t3MsuGW(p, T, green);
+    T3C c = msu;
+    for (int j = 0; j < K; j++) {
+      if (age[j] < 0.0f) break;
+      const T3C paint = (j % 3 == 2) ? maize : blue;                  // every third balloon is maize
+      if (age[j] < FLY) {                                             // balloon in flight from the street side
+        const float k = age[j] / FLY;
+        const float bx = cx[j], by = cy[j] + 0.25f * (1.0f - k) * (1.0f - k), bz = cz[j] + (0.9f - cz[j]) * (1.0f - k);
+        const float dx = p.x - bx, dy = p.y - by, dz = p.z - bz;
+        if (dx * dx + dy * dy + dz * dz < 0.05f * 0.05f) c = T3_WHITE;
+        continue;
+      }
+      const float u = (age[j] - FLY) / 0.3f, R = rj[j] * (u < 1.0f ? 1.0f - (1.0f - u) * (1.0f - u) * (1.0f - u) : 1.0f);
+      const float dx = p.x - cx[j], dy = p.y - cy[j], dz = p.z - cz[j], d = sqrtf(dx * dx + dy * dy + dz * dz);
+      if (d < R) { c = u < 1.0f && d > R - 0.03f ? T3_WHITE : t3UmSpark(p, T, paint, paint.r > paint.b ? blue : maize, 0.05f); continue; }
+      const float L = fminf(age[j] - FLY, 1.6f) * 0.14f;              // drips get longer, then stop
+      for (int q = -1; q <= 1; q++) {
+        const float off = q * 0.6f * rj[j];
+        const float ddx = p.x - (cx[j] + tx[j] * off), ddz = p.z - (cz[j] + tz[j] * off);
+        if (ddx * ddx + ddz * ddz < 0.035f * 0.035f && dy < -R * 0.5f && dy > -R * 0.5f - L * (1.0f - 0.3f * q * q)) { c = paint; break; }
+      }
+    }
+    if (fin > 0.0f) {
+      if (p.y > wash + 0.03f)       c = t3UmSpark(p, T, blue, maize, 0.07f);
+      else if (p.y > wash - 0.03f)  c = t3Sparkle(p, T, 0.4f) ? T3_WHITE : maize;
+      if (fin > 2.0f) c = t3Lerp(c, msu, (fin - 2.0f) / 0.5f);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_PAINT_SPLATS[] PROGMEM = "3D UofM Paint Splats@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Core Ignition: blue lights up deep inside the tree and spreads outward with spinning maize spokes ---
+void mode_3d_uofm_core_ignition(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float t = t3Frac(T / 9.0f);
+  const float R = 0.25f + t3Clamp(t / 0.55f) * 0.95f;                 // front, as a fraction of the tree's radius at each height
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float rc = sqrtf(p.x * p.x + p.z * p.z) / t3ConeR(p.y);     // 0 at the trunk, about 1 at the outside
+    const T3C msu = t3MsuGW(p, T, green);
+    T3C c;
+    if (t < 0.55f) {
+      if (rc < R - 0.09f)   c = t3UmSpark(p, T, blue, maize, 0.05f);
+      else if (rc < R)      c = sin_t(p.a * 6.0f + T * 4.0f + p.y * 10.0f) > 0.2f ? maize : (t3Sparkle(p, T, 0.5f) ? T3_WHITE : t3Mul(maize, 0.4f));
+      else                  c = msu;
+    } else {                                                          // the core keeps pulsing rings outward
+      c = t3Frac(rc * 2.0f - T * 1.5f) < 0.18f ? maize : t3UmSpark(p, T, blue, maize, 0.06f);
+      if (t > 0.88f) c = t3Lerp(c, msu, (t - 0.88f) / 0.12f);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_CORE_IGNITION[] PROGMEM = "3D UofM Core Ignition@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Maize Comets: maize and white comets orbit the trunk at different heights over a twinkling blue tree ---
+void mode_3d_uofm_maize_comets(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  constexpr int K = 5;
+  const float tail = 0.8f + SEGMENT.intensity / 255.0f * 2.2f;
+  float ak[K], hk[K];
+  for (int k = 0; k < K; k++) {
+    ak[k] = T * (1.1f + 0.35f * k) * ((k & 1) ? -1.0f : 1.0f) + k * 1.3f;
+    hk[k] = 0.12f + k * 0.18f + 0.05f * sin_t(T * 0.9f + k * 2.0f);
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    T3C c = t3Mul(blue, 0.35f + 0.25f * sin_t(t3Hash(p.i * 5U) * T3_TAU + T * 2.0f));   // slow shimmering blue
+    for (int k = 0; k < K; k++) {
+      const float dy = fabsf(p.y - hk[k]); if (dy > 0.06f) continue;
+      float diff = (ak[k] - p.a) * ((k & 1) ? -1.0f : 1.0f);          // how far behind the head, in its direction of travel
+      diff = fmodf(diff, T3_TAU); if (diff < 0.0f) diff += T3_TAU;
+      if (diff < 0.12f && dy < 0.04f) { c = T3_WHITE; break; }
+      if (diff < tail) {
+        const float b = 1.0f - diff / tail, v = b * b * (1.0f - dy / 0.06f);
+        c = t3Add(c, t3Mul((k % 2) ? T3C{255, 255, 235} : maize, v));
+      }
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_MAIZE_COMETS[] PROGMEM = "3D UofM Maize Comets@!,Tail length;Maize,Blue,Green;;1;sx=128,ix=110,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Gyro Bands: maize and blue bands slice through the tree on a plane that tilts and turns like a gyroscope ---
+void mode_3d_uofm_gyro_bands(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float th = T * 0.7f, tilt = 0.75f * sin_t(T * 0.3f), bands = 2.0f + SEGMENT.intensity / 255.0f * 6.0f;
+  const float nx = sin_approx(tilt) * cos_approx(th), ny = cos_approx(tilt), nz = sin_approx(tilt) * sin_approx(th);
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float s = t3Frac((p.x * nx + (p.y - 0.5f) * ny + p.z * nz) * bands - T * 0.5f);
+    const float edge = fminf(fabsf(s - 0.5f), fminf(s, 1.0f - s));     // distance to the nearest band edge
+    T3C c = s < 0.5f ? maize : blue;
+    if (edge < 0.04f && t3Sparkle(p, T, 0.5f)) c = T3_WHITE;
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_GYRO_BANDS[] PROGMEM = "3D UofM Gyro Bands@!,Bands;Maize,Blue,Green;;1;sx=128,ix=80,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Plasma: slow 3D plasma clouds of blue with hot maize cores drift through the tree ---
+void mode_3d_uofm_plasma(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float s = T * 0.4f, sc = 0.5f + SEGMENT.intensity / 255.0f;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float X = p.x * 7.0f * sc, Y = p.y * 5.0f * sc, Z = p.z * 7.0f * sc;
+    const float v = sin_t(X + s) + sin_t(Y * 1.3f - s * 0.8f) + sin_t(Z * 1.2f + s * 0.6f) + sin_t((X - Y + Z) * 0.8f + s * 0.5f);
+    const float u = (v + 4.0f) * 0.125f;                              // 0..1
+    T3C c;
+    if (u < 0.5f)       c = t3Mul(blue, 0.15f + u * 1.7f);            // deep blue up to full blue
+    else if (u < 0.62f) c = t3Lerp(blue, T3_WHITE, (u - 0.5f) / 0.12f * 0.6f);
+    else                c = t3Lerp(t3Lerp(blue, T3_WHITE, 0.6f), maize, t3Clamp((u - 0.62f) / 0.12f));
+    if (u > 0.75f && t3Sparkle(p, T, 0.12f)) c = T3_WHITE;
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_PLASMA[] PROGMEM = "3D UofM Plasma@!,Cloud size;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Maize Fountain: maize sparks spiral up to the top, then rain down the outside of a blue tree ---
+void mode_3d_uofm_maize_fountain(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  constexpr int K = 14; constexpr float LIFE = 2.4f;
+  float qx[K], qy[K], qz[K];
+  for (int q = 0; q < K; q++) {                                       // each spark is spread evenly through its life cycle
+    const float ph = T / LIFE + (float)q / K; const uint32_t id = (uint32_t)ph; const float s = t3Frac(ph);
+    const float a0 = t3HashS(id * K + q, 0) * T3_TAU;
+    float y, a;
+    if (s < 0.35f) { y = 0.03f + s / 0.35f * 0.97f; a = a0 + s * 18.0f; }           // fast spiral up
+    else { const float u = (s - 0.35f) / 0.65f; y = 1.0f - u * u * 1.0f; a = a0 + 6.3f + u * 2.0f; }   // falls and speeds up
+    const float r = t3ConeR(y);
+    qx[q] = cos_approx(a) * r; qy[q] = y; qz[q] = sin_approx(a) * r;
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    T3C c = t3UmSpark(p, T, t3Mul(blue, 0.6f), maize, 0.025f);
+    for (int q = 0; q < K; q++) {
+      const float dx = p.x - qx[q], dy = p.y - qy[q], dz = p.z - qz[q], d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < 0.03f * 0.03f) { c = T3_WHITE; break; }
+      if (d2 < 0.075f * 0.075f) c = t3Add(c, t3Mul(maize, 1.0f - sqrtf(d2) / 0.075f));
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_MAIZE_FOUNTAIN[] PROGMEM = "3D UofM Maize Fountain@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Cube Twist: a 3D maize and blue checkerboard of blocks turns and tips through the tree ---
+void mode_3d_uofm_cube_twist(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float sz = 0.06f + SEGMENT.intensity / 255.0f * 0.12f;           // block size
+  const float ry = T * 0.4f, rx = 0.5f * sin_t(T * 0.25f);
+  const float cy = cos_approx(ry), sy = sin_approx(ry), cx = cos_approx(rx), sx = sin_approx(rx);
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float x1 = p.x * cy - p.z * sy, z1 = p.x * sy + p.z * cy, y0 = p.y - 0.5f;   // turn about the trunk...
+    const float y1 = y0 * cx - z1 * sx, z2 = y0 * sx + z1 * cx;                         // ...then tip forward and back
+    const float fx = x1 / sz + 64.0f, fy = y1 / sz + 64.0f, fz = z2 / sz + 64.0f;
+    const bool odd = (((int)fx + (int)fy + (int)fz) & 1) != 0;
+    const float ex = fminf(t3Frac(fx), 1.0f - t3Frac(fx)), ey = fminf(t3Frac(fy), 1.0f - t3Frac(fy)), ez = fminf(t3Frac(fz), 1.0f - t3Frac(fz));
+    T3C c = odd ? maize : blue;
+    if (fminf(ex, fminf(ey, ez)) < 0.08f) c = t3Sparkle(p, T, 0.35f) ? T3_WHITE : t3Mul(c, 0.5f);   // glinting block edges
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_CUBE_TWIST[] PROGMEM = "3D UofM Cube Twist@!,Block size;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
   red = t3C(t3Or(SEGCOLOR(0), 0xDC0A14)); green = t3C(t3Or(SEGCOLOR(1), 0x0AAA28)); gold = t3C(t3Or(SEGCOLOR(2), 0xFFB428));
@@ -14537,6 +14832,16 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_3D_UOFM_HELIX_TAKEOVER, &mode_3d_uofm_helix_takeover, _data_FX_MODE_3D_UOFM_HELIX_TAKEOVER);
   addEffect(FX_MODE_3D_UOFM_HALO_DROP, &mode_3d_uofm_halo_drop, _data_FX_MODE_3D_UOFM_HALO_DROP);
   addEffect(FX_MODE_3D_UOFM_FIREWORK_TAKEOVER, &mode_3d_uofm_firework_takeover, _data_FX_MODE_3D_UOFM_FIREWORK_TAKEOVER);
+  addEffect(FX_MODE_3D_UOFM_TIDAL_WAVE, &mode_3d_uofm_tidal_wave, _data_FX_MODE_3D_UOFM_TIDAL_WAVE);
+  addEffect(FX_MODE_3D_UOFM_LIGHTNING_STRIKE, &mode_3d_uofm_lightning_strike, _data_FX_MODE_3D_UOFM_LIGHTNING_STRIKE);
+  addEffect(FX_MODE_3D_UOFM_BLUE_FLOOD, &mode_3d_uofm_blue_flood, _data_FX_MODE_3D_UOFM_BLUE_FLOOD);
+  addEffect(FX_MODE_3D_UOFM_PAINT_SPLATS, &mode_3d_uofm_paint_splats, _data_FX_MODE_3D_UOFM_PAINT_SPLATS);
+  addEffect(FX_MODE_3D_UOFM_CORE_IGNITION, &mode_3d_uofm_core_ignition, _data_FX_MODE_3D_UOFM_CORE_IGNITION);
+  addEffect(FX_MODE_3D_UOFM_MAIZE_COMETS, &mode_3d_uofm_maize_comets, _data_FX_MODE_3D_UOFM_MAIZE_COMETS);
+  addEffect(FX_MODE_3D_UOFM_GYRO_BANDS, &mode_3d_uofm_gyro_bands, _data_FX_MODE_3D_UOFM_GYRO_BANDS);
+  addEffect(FX_MODE_3D_UOFM_PLASMA, &mode_3d_uofm_plasma, _data_FX_MODE_3D_UOFM_PLASMA);
+  addEffect(FX_MODE_3D_UOFM_MAIZE_FOUNTAIN, &mode_3d_uofm_maize_fountain, _data_FX_MODE_3D_UOFM_MAIZE_FOUNTAIN);
+  addEffect(FX_MODE_3D_UOFM_CUBE_TWIST, &mode_3d_uofm_cube_twist, _data_FX_MODE_3D_UOFM_CUBE_TWIST);
   addEffect(FX_MODE_3D_CHRISTMAS_MAGIC_WAND, &mode_3d_christmas_magic_wand, _data_FX_MODE_3D_CHRISTMAS_MAGIC_WAND);
   addEffect(FX_MODE_3D_CHRISTMAS_BACK_GLOW, &mode_3d_christmas_back_glow, _data_FX_MODE_3D_CHRISTMAS_BACK_GLOW);
   addEffect(FX_MODE_3D_CHRISTMAS_NORTH_STAR, &mode_3d_christmas_north_star, _data_FX_MODE_3D_CHRISTMAS_NORTH_STAR);
