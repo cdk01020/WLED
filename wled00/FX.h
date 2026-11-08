@@ -424,6 +424,16 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_UOFM_PLASMA               214  // was PS Sonic Stream (sound reactive, removed)
 #define FX_MODE_3D_UOFM_MAIZE_FOUNTAIN       215  // was PS Sonic Boom (sound reactive, removed)
 #define FX_MODE_3D_UOFM_CUBE_TWIST           216  // was PS Springy (sound reactive, removed)
+#define FX_MODE_3D_UOFM_GLITTER_FLIP         146  // was 2D Noise (2D matrix only, removed)
+#define FX_MODE_3D_UOFM_GLITTER_BREATH       149  // was 2D Firenoise (2D matrix only, removed)
+#define FX_MODE_3D_UOFM_TWINKLE_SWAP         150  // was 2D Squared Swirl (2D matrix only, removed)
+#define FX_MODE_3D_UOFM_GLITTER_BOMB         152  // was 2D DNA (2D matrix only, removed)
+#define FX_MODE_3D_UOFM_SPIN_SWAP            153  // was 2D Matrix (2D matrix only, removed)
+#define FX_MODE_3D_UOFM_GLITTER_RAIN         154  // was 2D Metaballs (2D matrix only, removed)
+#define FX_MODE_3D_UOFM_PARTY_POPS           169  // unused slot
+#define FX_MODE_3D_UOFM_CHAMPAGNE            170  // unused slot
+#define FX_MODE_3D_UOFM_SHIMMER_SPHERE       171  // unused slot
+#define FX_MODE_3D_UOFM_OMBRE_GLITTER        182  // was 2D DNA Spiral (2D matrix only, removed)
 #define FX_MODE_3D_CHRISTMAS_MAGIC_WAND      155
 #define FX_MODE_3D_CHRISTMAS_BACK_GLOW       156
 #define FX_MODE_3D_CHRISTMAS_NORTH_STAR      157

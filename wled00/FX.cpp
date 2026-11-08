@@ -14187,6 +14187,218 @@ void mode_3d_uofm_cube_twist(void) {
 }
 static const char _data_FX_MODE_3D_UOFM_CUBE_TWIST[] PROGMEM = "3D UofM Cube Twist@!,Block size;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
 
+// --- UofM whole-tree color changes with glitter ---
+// The whole tree is one color at a time (maize or blue), covered in glitter. Glitter comes two ways:
+// quick random sparkles (t3Sparkle) and slow glints that swell and fade on their own (t3Glint).
+// The intensity slider ("Glitter") sets how much glitter there is.
+
+// slow glint: about one pixel in six peaks now and then, each at its own pace; returns 0..1
+static inline float t3Glint(const T3P& p, float T, float sp) {
+  const float h = t3Hash(p.i * 977U + 11U), h2 = t3Hash(p.i * 631U + 5U);
+  float s = sin_t(T * sp * (0.6f + h2) + h * T3_TAU);
+  if (s <= 0.0f) return 0.0f;
+  s *= s; s *= s; s *= s; return s * s;                               // sin^16: short, bright peaks
+}
+// whole-tree color n in the maize / blue sequence, and the glitter color that shows best on it
+static inline T3C t3UmCol(uint32_t n, T3C maize, T3C blue) { return (n & 1) ? maize : blue; }
+static inline T3C t3UmGlit(uint32_t n, T3C maize) { return (n & 1) ? T3_WHITE : maize; }
+static inline float t3GlitAmt() { return 0.3f + SEGMENT.intensity / 255.0f * 1.4f; }   // 0.3x .. 1.7x
+// adds the glitter layer on top of a whole-tree color
+static inline T3C t3Glitter(const T3P& p, float T, T3C base, T3C glit, float amt) {
+  if (t3Sparkle(p, T, 0.07f * amt)) return glit;
+  return t3Add(base, t3Mul(T3_WHITE, t3Glint(p, T, 1.6f) * fminf(1.0f, amt)));
+}
+
+// --- 3D UofM Glitter Flip: the whole tree holds blue, flashes white glitter, flips to maize, and back ---
+void mode_3d_uofm_glitter_flip(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 4.0f); const float u = t3Frac(T / 4.0f), amt = t3GlitAmt();
+  const T3C A = t3UmCol(n, maize, blue), G = t3UmGlit(n, maize);
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    T3C c = t3Glitter(p, T, A, G, amt);
+    if (u < 0.14f) c = t3Sparkle(p, T, 0.5f) ? T3_WHITE : t3Lerp(T3_WHITE, c, u / 0.14f);   // the flip flash
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_GLITTER_FLIP[] PROGMEM = "3D UofM Glitter Flip@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Glitter Breath: the whole tree slowly breathes, alternating blue and maize; glitter stays bright when it dims ---
+void mode_3d_uofm_glitter_breath(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 5.0f); const float u = t3Frac(T / 5.0f), amt = t3GlitAmt();
+  const float b = 0.12f + 0.88f * (0.5f - 0.5f * cos_approx(u * T3_TAU));   // dark at the start and end of each breath
+  const T3C A = t3Mul(t3UmCol(n, maize, blue), b), G = t3UmGlit(n, maize);
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    t3Set(i, t3Glitter(p, T, A, G, amt * (1.6f - b)));                // more glitter while the tree is dim
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_GLITTER_BREATH[] PROGMEM = "3D UofM Glitter Breath@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Twinkle Swap: every light changes color at its own moment with a white twinkle, until the whole tree has swapped ---
+void mode_3d_uofm_twinkle_swap(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 6.0f); const float u = t3Frac(T / 6.0f), amt = t3GlitAmt();
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float ts = 0.1f + 0.6f * t3Hash(p.i * 2971U + n * 7919U);   // when this light swaps
+    const float d = u - ts;
+    T3C c;
+    if (d < -0.04f)     c = t3Glitter(p, T, t3UmCol(n, maize, blue), t3UmGlit(n, maize), amt);
+    else if (d < 0.05f) c = T3_WHITE;                                  // the twinkle as it swaps
+    else                c = t3Lerp(T3_WHITE, t3Glitter(p, T, t3UmCol(n + 1, maize, blue), t3UmGlit(n + 1, maize), amt), t3Clamp((d - 0.05f) / 0.06f));
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_TWINKLE_SWAP[] PROGMEM = "3D UofM Twinkle Swap@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Glitter Bomb: glitter builds up over the whole tree until it bursts white and the tree changes color ---
+void mode_3d_uofm_glitter_bomb(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 5.0f); const float u = t3Frac(T / 5.0f), amt = t3GlitAmt();
+  const T3C A = t3UmCol(n, maize, blue), G = t3UmGlit(n, maize);
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    T3C c;
+    if (u < 0.86f) {
+      const float k = u / 0.86f, rate = (0.03f + k * k * k * 0.55f) * amt;   // glitter builds faster and faster
+      c = t3Sparkle(p, T, rate) ? (t3Hash(p.i + (uint32_t)(T * 12.0f)) < 0.5f ? T3_WHITE : G) : t3Mul(A, 1.0f - 0.3f * k);
+    } else {                                                          // the burst, settling into the next color
+      const float k = (u - 0.86f) / 0.14f;
+      c = t3Sparkle(p, T, 0.6f * (1.0f - k)) ? T3_WHITE : t3Lerp(T3_WHITE, t3UmCol(n + 1, maize, blue), k);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_GLITTER_BOMB[] PROGMEM = "3D UofM Glitter Bomb@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Spin Swap: a glittering edge spins once around the trunk and changes the whole tree's color, then holds ---
+void mode_3d_uofm_spin_swap(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 4.0f); const float u = t3Frac(T / 4.0f), amt = t3GlitAmt();
+  const float w = t3Clamp(u / 0.3f) * (T3_TAU + 0.9f);                // how far round the edge has gone
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    float rel = fmodf(p.a - 1.5708f, T3_TAU); if (rel < 0.0f) rel += T3_TAU;   // starts at the street side
+    const float e = w - rel;
+    T3C c;
+    if (e > 0.45f)      c = t3Glitter(p, T, t3UmCol(n + 1, maize, blue), t3UmGlit(n + 1, maize), amt);
+    else if (e > 0.0f)  c = t3Sparkle(p, T, 0.55f) ? T3_WHITE : maize;
+    else                c = t3Glitter(p, T, t3UmCol(n, maize, blue), t3UmGlit(n, maize), amt);
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_SPIN_SWAP[] PROGMEM = "3D UofM Spin Swap@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Glitter Rain: glitter streaks fall down a solid tree; now and then a glittering curtain drops and swaps the color ---
+void mode_3d_uofm_glitter_rain(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 5.0f); const float u = t3Frac(T / 5.0f), amt = t3GlitAmt();
+  const float yw = u < 0.18f ? 1.08f - u / 0.18f * 1.2f : -1.0f;      // the curtain's edge while it drops
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const bool fresh = p.y > yw + 0.04f;
+    const uint32_t m = fresh ? n : n - 1;                             // above the curtain: new color; below: old
+    T3C c = t3Mul(t3UmCol(m, maize, blue), 0.85f);
+    const uint32_t col = (uint32_t)(p.a / T3_TAU * 28.0f);            // rain falls in 28 columns around the tree
+    const float hc = t3Hash(col * 131U + 7U);
+    if (t3Hash(col * 17U + 3U) < 0.55f * amt) {
+      const float s = t3Frac(p.y * 1.5f + T * (0.7f + hc * 0.5f) + hc);
+      if (s < 0.03f)       c = T3_WHITE;                              // head of the streak
+      else if (s < 0.14f)  c = t3Add(c, t3Mul(t3Sparkle(p, T, 0.5f) ? T3_WHITE : t3UmGlit(m, maize), 1.0f - s / 0.14f));
+    }
+    if (fabsf(p.y - yw) < 0.04f) c = t3Sparkle(p, T, 0.6f) ? T3_WHITE : maize;
+    else if (t3Sparkle(p, T, 0.03f * amt)) c = t3UmGlit(m, maize);
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_GLITTER_RAIN[] PROGMEM = "3D UofM Glitter Rain@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Party Pops: the whole tree pops to a new color on every beat with a burst of glitter, white glitter every 8th ---
+void mode_3d_uofm_party_pops(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 0.65f); const float u = t3Frac(T / 0.65f), amt = t3GlitAmt();
+  const bool white = (n % 8) == 7;
+  const T3C A = white ? T3C{200, 210, 255} : t3UmCol(n, maize, blue);
+  const float b = 1.0f - 0.45f * u;                                   // bright on the beat, easing down
+  const float rate = (0.45f * (1.0f - u) * (1.0f - u) + 0.03f) * amt;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    t3Set(i, t3Sparkle(p, T, rate) ? (white ? maize : T3_WHITE) : t3Mul(A, b));
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_PARTY_POPS[] PROGMEM = "3D UofM Party Pops@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Champagne: soft glints and rising bubbles over a tree that slowly fades between blue and maize ---
+void mode_3d_uofm_champagne(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float u = t3Frac(T / 8.0f), amt = t3GlitAmt();
+  float m;                                                            // 0 = blue, 1 = maize: hold, fade, hold, fade
+  if (u < 0.4f) m = 0.0f; else if (u < 0.5f) m = (u - 0.4f) / 0.1f; else if (u < 0.9f) m = 1.0f; else m = 1.0f - (u - 0.9f) / 0.1f;
+  m = m * m * (3.0f - 2.0f * m);
+  const T3C base = t3Mul(t3Lerp(blue, maize, m), 0.8f), fizz = { 255, 240, 200 };
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    T3C c = t3Add(base, t3Mul(fizz, t3Glint(p, T, 1.0f) * fminf(1.2f, amt)));
+    if (t3Hash(p.i * 3U + 9U) < 0.25f * amt && t3Frac(p.y * 3.0f - T * 0.4f + t3Hash(p.i)) < 0.05f) c = fizz;   // bubbles
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_CHAMPAGNE[] PROGMEM = "3D UofM Champagne@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Shimmer Sphere: a glittering sphere bursts out from a random spot inside and changes the whole tree's color ---
+void mode_3d_uofm_shimmer_sphere(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const uint32_t n = (uint32_t)(T / 4.0f); const float u = t3Frac(T / 4.0f), amt = t3GlitAmt();
+  const float cy = 0.2f + t3HashS(n, 0) * 0.55f, cr = t3ConeR(cy) * 0.7f * t3HashS(n, 1), ca = t3HashS(n, 2) * T3_TAU;
+  const float cx = cos_approx(ca) * cr, cz = sin_approx(ca) * cr;
+  const float R = t3Clamp(u / 0.28f) * 1.15f;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float dx = p.x - cx, dy = p.y - cy, dz = p.z - cz, d = sqrtf(dx * dx + dy * dy + dz * dz);
+    T3C c;
+    if (u < 0.3f && fabsf(d - R) < 0.05f) c = t3Sparkle(p, T, 0.55f) ? T3_WHITE : maize;
+    else if (d < R)                        c = t3Glitter(p, T, t3UmCol(n + 1, maize, blue), t3UmGlit(n + 1, maize), amt);
+    else                                   c = t3Glitter(p, T, t3UmCol(n, maize, blue), t3UmGlit(n, maize), amt);
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_SHIMMER_SPHERE[] PROGMEM = "3D UofM Shimmer Sphere@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
+// --- 3D UofM Ombre Glitter: a smooth maize-to-blue blend rolls up the tree so every light keeps changing, all glittering ---
+void mode_3d_uofm_ombre_glitter(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  const float amt = t3GlitAmt();
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const float v = t3Frac(p.y * 0.8f - T * 0.15f + 0.08f * sin_t(p.a));   // the blend leans a little around the trunk
+    const float m = 0.5f - 0.5f * cos_approx(v * T3_TAU);
+    t3Set(i, t3Glitter(p, T, t3Lerp(blue, maize, m), T3_WHITE, amt));
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_OMBRE_GLITTER[] PROGMEM = "3D UofM Ombre Glitter@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
+
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
   red = t3C(t3Or(SEGCOLOR(0), 0xDC0A14)); green = t3C(t3Or(SEGCOLOR(1), 0x0AAA28)); gold = t3C(t3Or(SEGCOLOR(2), 0xFFB428));
@@ -14842,6 +15054,16 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_3D_UOFM_PLASMA, &mode_3d_uofm_plasma, _data_FX_MODE_3D_UOFM_PLASMA);
   addEffect(FX_MODE_3D_UOFM_MAIZE_FOUNTAIN, &mode_3d_uofm_maize_fountain, _data_FX_MODE_3D_UOFM_MAIZE_FOUNTAIN);
   addEffect(FX_MODE_3D_UOFM_CUBE_TWIST, &mode_3d_uofm_cube_twist, _data_FX_MODE_3D_UOFM_CUBE_TWIST);
+  addEffect(FX_MODE_3D_UOFM_GLITTER_FLIP, &mode_3d_uofm_glitter_flip, _data_FX_MODE_3D_UOFM_GLITTER_FLIP);
+  addEffect(FX_MODE_3D_UOFM_GLITTER_BREATH, &mode_3d_uofm_glitter_breath, _data_FX_MODE_3D_UOFM_GLITTER_BREATH);
+  addEffect(FX_MODE_3D_UOFM_TWINKLE_SWAP, &mode_3d_uofm_twinkle_swap, _data_FX_MODE_3D_UOFM_TWINKLE_SWAP);
+  addEffect(FX_MODE_3D_UOFM_GLITTER_BOMB, &mode_3d_uofm_glitter_bomb, _data_FX_MODE_3D_UOFM_GLITTER_BOMB);
+  addEffect(FX_MODE_3D_UOFM_SPIN_SWAP, &mode_3d_uofm_spin_swap, _data_FX_MODE_3D_UOFM_SPIN_SWAP);
+  addEffect(FX_MODE_3D_UOFM_GLITTER_RAIN, &mode_3d_uofm_glitter_rain, _data_FX_MODE_3D_UOFM_GLITTER_RAIN);
+  addEffect(FX_MODE_3D_UOFM_PARTY_POPS, &mode_3d_uofm_party_pops, _data_FX_MODE_3D_UOFM_PARTY_POPS);
+  addEffect(FX_MODE_3D_UOFM_CHAMPAGNE, &mode_3d_uofm_champagne, _data_FX_MODE_3D_UOFM_CHAMPAGNE);
+  addEffect(FX_MODE_3D_UOFM_SHIMMER_SPHERE, &mode_3d_uofm_shimmer_sphere, _data_FX_MODE_3D_UOFM_SHIMMER_SPHERE);
+  addEffect(FX_MODE_3D_UOFM_OMBRE_GLITTER, &mode_3d_uofm_ombre_glitter, _data_FX_MODE_3D_UOFM_OMBRE_GLITTER);
   addEffect(FX_MODE_3D_CHRISTMAS_MAGIC_WAND, &mode_3d_christmas_magic_wand, _data_FX_MODE_3D_CHRISTMAS_MAGIC_WAND);
   addEffect(FX_MODE_3D_CHRISTMAS_BACK_GLOW, &mode_3d_christmas_back_glow, _data_FX_MODE_3D_CHRISTMAS_BACK_GLOW);
   addEffect(FX_MODE_3D_CHRISTMAS_NORTH_STAR, &mode_3d_christmas_north_star, _data_FX_MODE_3D_CHRISTMAS_NORTH_STAR);
@@ -15002,14 +15224,14 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_2DSCROLLTEXT, &mode_2Dscrollingtext, _data_FX_MODE_2DSCROLLTEXT);
   addEffect(FX_MODE_2DDRIFTROSE, &mode_2Ddriftrose, _data_FX_MODE_2DDRIFTROSE);
   addEffect(FX_MODE_2DDISTORTIONWAVES, &mode_2Ddistortionwaves, _data_FX_MODE_2DDISTORTIONWAVES);
-  addEffect(FX_MODE_2DNOISE, &mode_2Dnoise, _data_FX_MODE_2DNOISE);
-  addEffect(FX_MODE_2DFIRENOISE, &mode_2Dfirenoise, _data_FX_MODE_2DFIRENOISE);
-  addEffect(FX_MODE_2DSQUAREDSWIRL, &mode_2Dsquaredswirl, _data_FX_MODE_2DSQUAREDSWIRL);
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
 
   //non audio
-  addEffect(FX_MODE_2DDNA, &mode_2Ddna, _data_FX_MODE_2DDNA);
-  addEffect(FX_MODE_2DMATRIX, &mode_2Dmatrix, _data_FX_MODE_2DMATRIX);
-  addEffect(FX_MODE_2DMETABALLS, &mode_2Dmetaballs, _data_FX_MODE_2DMETABALLS);
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
   addEffect(FX_MODE_2DPULSER, &mode_2DPulser, _data_FX_MODE_2DPULSER);
   addEffect(FX_MODE_2DDRIFT, &mode_2DDrift, _data_FX_MODE_2DDRIFT);
   addEffect(FX_MODE_2DSUNRADIATION, &mode_2DSunradiation, _data_FX_MODE_2DSUNRADIATION);
@@ -15023,7 +15245,7 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_2DPLASMABALL, &mode_2DPlasmaball, _data_FX_MODE_2DPLASMABALL);
   addEffect(FX_MODE_2DHIPHOTIC, &mode_2DHiphotic, _data_FX_MODE_2DHIPHOTIC);
   addEffect(FX_MODE_2DSINDOTS, &mode_2DSindots, _data_FX_MODE_2DSINDOTS);
-  addEffect(FX_MODE_2DDNASPIRAL, &mode_2DDNASpiral, _data_FX_MODE_2DDNASPIRAL);
+  // removed on this branch (2D matrix only, never shown for the 1D tree): slot reused by a UofM glitter effect
   addEffect(FX_MODE_2DBLACKHOLE, &mode_2DBlackHole, _data_FX_MODE_2DBLACKHOLE);
   addEffect(FX_MODE_2DSOAP, &mode_2Dsoap, _data_FX_MODE_2DSOAP);
   addEffect(FX_MODE_2DOCTOPUS, &mode_2Doctopus, _data_FX_MODE_2DOCTOPUS);
