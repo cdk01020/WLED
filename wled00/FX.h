@@ -410,6 +410,9 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_AURORA_CLOUDS             144
 #define FX_MODE_3D_UOFM_VICTORY_BURSTS       145
 #define FX_MODE_3D_UOFM_BACK_RUSH            148
+#define FX_MODE_3D_UOFM_GLITTER_BREATH       160  // was Funky Plank (sound reactive, removed)
+#define FX_MODE_3D_UOFM_PLASMA               163  // was Blurz (sound reactive, removed)
+#define FX_MODE_3D_UOFM_OMBRE_GLITTER        165  // was Waverly (sound reactive, removed)
 #define FX_MODE_3D_CHRISTMAS_MAGIC_WAND      155
 #define FX_MODE_3D_CHRISTMAS_BACK_GLOW       156
 #define FX_MODE_3D_CHRISTMAS_NORTH_STAR      157
