@@ -13835,6 +13835,63 @@ void mode_3d_uofm_halo_drop(void) {
 }
 static const char _data_FX_MODE_3D_UOFM_HALO_DROP[] PROGMEM = "3D UofM Halo Drop@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
 
+// --- 3D UofM Firework Takeover: maize and blue fireworks burst inside a sparkling green and white tree until it's all UofM ---
+// Each cycle launches 7 rockets from the ground; each one bursts into an expanding shell that claims its sphere for blue.
+// A final shell from the middle of the tree catches anything left, a crackling finale plays, then the green comes back.
+void mode_3d_uofm_firework_takeover(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C maize, blue, green; t3UofMColors(maize, blue, green);
+  constexpr int K = 7;
+  constexpr float GAP = 1.1f, LAUNCH = 0.5f, BOOM = 0.9f;           // seconds between launches, rocket climb, shell growth
+  constexpr float FIN = K * GAP + LAUNCH + BOOM, CYC = FIN + 3.0f;   // finale starts at FIN, cycle restarts at CYC
+  const uint32_t cyc = (uint32_t)(T / CYC);
+  const float tc = fmodf(T, CYC), ft = tc - FIN;
+  float bx[K], by[K], bz[K], br[K], age[K];
+  for (int j = 0; j < K; j++) {                                      // burst spots, spread around the trunk by the golden angle
+    const uint32_t s = cyc * K + j;
+    by[j] = 0.22f + t3HashS(s, 0) * 0.6f;
+    const float r = t3ConeR(by[j]) * 0.8f * sqrtf(t3HashS(s, 1)), a = (j * 0.618f + t3HashS(s, 2) * 0.3f) * T3_TAU;
+    bx[j] = cos_approx(a) * r; bz[j] = sin_approx(a) * r;
+    br[j] = 0.3f + t3HashS(s, 3) * 0.18f;
+    age[j] = tc - j * GAP;
+  }
+  const float fr = ft > 0.0f ? t3Clamp(ft) * 0.95f : -1.0f;          // finale shell radius
+  const float back = ft > 2.2f ? t3Clamp((ft - 2.2f) / 0.8f) : 0.0f; // how far the green has come back
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    // sparkling green and white: about a fifth of the pixels glow soft white, plus fast white twinkles
+    const T3C msu = t3Sparkle(p, T, 0.16f) ? T3C{230, 255, 235} : (t3Hash(p.i * 13U + 3U) < 0.18f ? T3C{120, 140, 125} : green);
+    T3C c = msu;
+    for (int j = 0; j < K; j++) {
+      if (age[j] < 0.0f) break;                                      // later rockets haven't launched yet
+      const T3C jc = (j & 1) ? blue : maize;                         // shells alternate maize and blue
+      if (age[j] < LAUNCH) {                                         // rocket climbing with a maize trail
+        const float ry = by[j] * age[j] / LAUNCH, dx = p.x - bx[j], dz = p.z - bz[j], hd = dx * dx + dz * dz;
+        const float dy = p.y - ry;
+        if (hd + dy * dy < 0.04f * 0.04f)                c = T3_WHITE;
+        else if (hd < 0.035f * 0.035f && dy < 0.0f && dy > -0.15f) c = t3Mul(maize, 1.0f + dy / 0.15f);
+        continue;
+      }
+      const float u = (age[j] - LAUNCH) / BOOM, R = br[j] * (u < 1.0f ? 1.0f - (1.0f - u) * (1.0f - u) : 1.0f);
+      const float dx = p.x - bx[j], dy = p.y - by[j], dz = p.z - bz[j], d = sqrtf(dx * dx + dy * dy + dz * dz);
+      if (u < 1.3f && fabsf(d - R) < 0.045f) c = t3Sparkle(p, T, 0.45f) ? T3_WHITE : jc;   // the bursting shell
+      else if (d < R) {                                              // claimed: glitter in the shell color settles into blue
+        const T3C won = t3UmSpark(p, T, blue, maize, 0.07f);
+        c = t3Lerp(t3Sparkle(p, T, 0.3f) ? T3_WHITE : jc, won, t3Clamp((u - 0.6f) / 1.0f));
+      }
+    }
+    if (fr >= 0.0f) {                                                // finale: one big shell from the middle, then crackle everywhere
+      const float dy = p.y - 0.45f, d = sqrtf(p.x * p.x + dy * dy + p.z * p.z);
+      if (fabsf(d - fr) < 0.04f && fr < 0.9f) c = t3Sparkle(p, T, 0.5f) ? T3_WHITE : maize;
+      else if (d < fr) c = t3Sparkle(p, T, 0.1f) ? T3_WHITE : t3UmSpark(p, T, blue, maize, 0.16f);
+      if (back > 0.0f) c = t3Lerp(c, msu, back);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_UOFM_FIREWORK_TAKEOVER[] PROGMEM = "3D UofM Firework Takeover@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
+
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
   red = t3C(t3Or(SEGCOLOR(0), 0xDC0A14)); green = t3C(t3Or(SEGCOLOR(1), 0x0AAA28)); gold = t3C(t3Or(SEGCOLOR(2), 0xFFB428));
@@ -14479,6 +14536,7 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_3D_UOFM_GOAL_LINE_STAND, &mode_3d_uofm_goal_line_stand, _data_FX_MODE_3D_UOFM_GOAL_LINE_STAND);
   addEffect(FX_MODE_3D_UOFM_HELIX_TAKEOVER, &mode_3d_uofm_helix_takeover, _data_FX_MODE_3D_UOFM_HELIX_TAKEOVER);
   addEffect(FX_MODE_3D_UOFM_HALO_DROP, &mode_3d_uofm_halo_drop, _data_FX_MODE_3D_UOFM_HALO_DROP);
+  addEffect(FX_MODE_3D_UOFM_FIREWORK_TAKEOVER, &mode_3d_uofm_firework_takeover, _data_FX_MODE_3D_UOFM_FIREWORK_TAKEOVER);
   addEffect(FX_MODE_3D_CHRISTMAS_MAGIC_WAND, &mode_3d_christmas_magic_wand, _data_FX_MODE_3D_CHRISTMAS_MAGIC_WAND);
   addEffect(FX_MODE_3D_CHRISTMAS_BACK_GLOW, &mode_3d_christmas_back_glow, _data_FX_MODE_3D_CHRISTMAS_BACK_GLOW);
   addEffect(FX_MODE_3D_CHRISTMAS_NORTH_STAR, &mode_3d_christmas_north_star, _data_FX_MODE_3D_CHRISTMAS_NORTH_STAR);
