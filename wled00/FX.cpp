@@ -13816,6 +13816,218 @@ void mode_3d_uofm_ombre_glitter(void) {
 }
 static const char _data_FX_MODE_3D_UOFM_OMBRE_GLITTER[] PROGMEM = "UofM Ombre Glitter@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
 
+// --- FRZ: Frozen-style winter magic effects ---
+// These work in a normalized tree space: x and z are divided by the tree's base radius so the tree
+// spans about -1..1 side to side (z = -1 is the street side), and y stays 0 (base) .. 1 (top).
+// Each cycle picks a new random pixel on the tree as its starting point.
+static constexpr float FRZ_INV_R = 1.0f / 0.2568f;
+static const T3C FRZ_NIGHT = { 2, 6, 20 };
+struct FrzV { float x, y, z; };
+static inline FrzV frzN(const T3P& p) { return { p.x * FRZ_INV_R, p.y, -p.z * FRZ_INV_R }; }
+static inline float frzDist(const FrzV& a, const FrzV& b) {
+  const float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z; return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+// a random pixel on the real tree, the same one for a given cycle number and key
+static FrzV frzSeed(uint32_t cyc, uint32_t k) {
+  uint16_t idx = (uint16_t)(t3HashS(cyc, k) * TREE3D_N); if (idx >= TREE3D_N) idx = TREE3D_N - 1;
+  const float x = (int8_t)pgm_read_byte(&tree3d_x[idx]) * TREE3D_XZ_SCALE;
+  const float y = pgm_read_byte(&tree3d_y[idx]) * TREE3D_Y_SCALE;
+  const float z = (int8_t)pgm_read_byte(&tree3d_z[idx]) * TREE3D_XZ_SCALE;
+  return { x * FRZ_INV_R, y, -z * FRZ_INV_R };
+}
+static inline float frzH(int a, int b, int c) { return t3Hash((uint32_t)a * 73856093U ^ (uint32_t)b * 19349663U ^ (uint32_t)c * 83492791U); }
+static inline float frzL(float a, float b, float t) { return a + (b - a) * t; }
+// smooth 3D value noise, 0..1
+static float frzNoise(float x, float y, float z) {
+  const float fx = floorf(x), fy = floorf(y), fz = floorf(z);
+  const int xi = (int)fx, yi = (int)fy, zi = (int)fz;
+  float u = x - fx, v = y - fy, w = z - fz;
+  u = u * u * (3.0f - 2.0f * u); v = v * v * (3.0f - 2.0f * v); w = w * w * (3.0f - 2.0f * w);
+  return frzL(frzL(frzL(frzH(xi, yi, zi), frzH(xi + 1, yi, zi), u), frzL(frzH(xi, yi + 1, zi), frzH(xi + 1, yi + 1, zi), u), v),
+              frzL(frzL(frzH(xi, yi, zi + 1), frzH(xi + 1, yi, zi + 1), u), frzL(frzH(xi, yi + 1, zi + 1), frzH(xi + 1, yi + 1, zi + 1), u), v), w);
+}
+// soft twinkle: each pixel peaks briefly at its own pace; 0..1
+static inline float frzTw(const T3P& p, float T, float rate) {
+  const float r1 = t3Hash(p.i * 2971U + 3U), r2 = t3Hash(p.i * 6151U + 9U);
+  float s = sin_t(T * rate * (0.6f + r1 * 0.9f) + r2 * 80.0f);
+  if (s <= 0.0f) return 0.0f;
+  const float s2 = s * s, s4 = s2 * s2, s8 = s4 * s4; return s8 * s8 * s8;   // sin^24
+}
+static inline float frzAngDiff(float a, float b) {
+  float d = fmodf(a - b, T3_TAU); if (d > 3.14159265f) d -= T3_TAU; if (d < -3.14159265f) d += T3_TAU; return d;
+}
+static inline float frzSmooth(float a, float b, float v) { const float t = t3Clamp((v - a) / (b - a)); return t * t * (3.0f - 2.0f * t); }
+// Ice, Lavender, Deep blue color slots
+static inline void frzColors(T3C& ice, T3C& lav, T3C& deep) {
+  ice = t3C(t3Or(SEGCOLOR(0), 0x78C8FF)); lav = t3C(t3Or(SEGCOLOR(1), 0xB9A0FF)); deep = t3C(t3Or(SEGCOLOR(2), 0x061030));
+}
+// frosted ice with glitter
+static inline T3C frzIcy(const T3P& p, const FrzV& v, float T, float k, T3C ice, T3C deep) {
+  const T3C base = t3Lerp(deep, ice, k + 0.25f * frzNoise(v.x * 5.0f + T * 0.2f, v.y * 5.0f, v.z * 5.0f));
+  return t3Lerp(base, T3_WHITE, frzTw(p, T, 2.5f));
+}
+
+// --- FRZ Frost Bloom: frost grows outward from a random spot on the tree on a ragged front, glitters, then melts away ---
+void mode_frz_frost_bloom(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C ice, lav, deep; frzColors(ice, lav, deep);
+  const uint32_t cyc = (uint32_t)(T / 10.0f); const float ph = t3Frac(T / 10.0f);
+  const FrzV s = frzSeed(cyc, 1);
+  const float rag = 0.1f + SEGMENT.intensity / 255.0f * 0.5f;                // Intensity: how ragged the front is
+  const float R = ph < 0.7f ? ph / 0.7f * 2.4f : 2.4f;
+  const float fade = ph > 0.85f ? 1.0f - (ph - 0.85f) / 0.15f : 1.0f;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const float dE = frzDist(v, s) + (frzNoise(v.x * 4.0f, v.y * 4.0f, v.z * 4.0f) - 0.5f) * rag * 2.0f;
+    if (dE < R) {
+      T3C c = frzIcy(p, v, T, 0.55f, ice, deep);
+      if (ph < 0.7f && R - dE < 0.12f) c = t3Lerp(c, T3_WHITE, 1.0f - (R - dE) / 0.12f);   // white-hot leading edge
+      t3Set(i, t3Mul(c, fade));
+    } else {
+      t3Set(i, t3Add(FRZ_NIGHT, t3Mul(T3_WHITE, frzTw(p, T, 1.0f) * 0.15f)));
+    }
+  }
+}
+static const char _data_FX_MODE_FRZ_FROST_BLOOM[] PROGMEM = "FRZ Frost Bloom@!,Raggedness;Ice,Lavender,Deep blue;;1;sx=128,ix=128,k0=78C8FF,k1=B9A0FF,k2=061030";
+
+// --- FRZ Ice Palace: faceted ice walls snap into place outward from a random spot, shimmer, then dissolve ---
+void mode_frz_ice_palace(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C ice, lav, deep; frzColors(ice, lav, deep);
+  const uint32_t cyc = (uint32_t)(T / 11.0f); const float ph = t3Frac(T / 11.0f);
+  const FrzV s = frzSeed(cyc, 2);
+  const float sectors = 4.0f + floorf(SEGMENT.intensity / 255.0f * 8.0f);   // Intensity: number of facets
+  const float R = ph < 0.6f ? ph / 0.6f * 2.7f : 2.7f;
+  const float fade = ph > 0.88f ? 1.0f - (ph - 0.88f) / 0.12f : 1.0f;
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const float a = p.a / T3_TAU;                                             // 0..1 around the trunk
+    const uint32_t sec = (uint32_t)(a * sectors), band = (uint32_t)(v.y * 7.0f);
+    const float fh = t3HashS(sec * 16U + band + cyc * 131U, 7);
+    const float dRev = frzDist(v, s) + 0.35f * fh;                            // each facet appears whole, a little after its neighbors
+    if (dRev < R) {
+      T3C c = t3Lerp(ice, lav, fh);
+      c = t3Mul(c, 0.3f + 0.5f * (0.5f + 0.5f * sin_t(v.y * 10.0f - T * 3.0f + sec)));
+      if (t3Frac(a * sectors) < 0.07f || t3Frac(v.y * 7.0f) < 0.09f) c = t3Lerp(c, T3_WHITE, 0.55f);   // bright seams
+      if (ph < 0.6f && R - dRev < 0.06f) c = T3_WHITE;
+      if (ph >= 0.6f) c = t3Lerp(c, T3_WHITE, frzTw(p, T, 3.0f));
+      t3Set(i, t3Mul(c, fade));
+    } else {
+      t3Set(i, t3Add(FRZ_NIGHT, t3Mul(T3_WHITE, frzTw(p, T, 1.5f) * 0.4f)));
+    }
+  }
+}
+static const char _data_FX_MODE_FRZ_ICE_PALACE[] PROGMEM = "FRZ Ice Palace@!,Facets;Ice,Lavender,Deep blue;;1;sx=128,ix=128,k0=78C8FF,k1=B9A0FF,k2=061030";
+
+// --- FRZ Northern Lights: aurora curtains ripple across the tree; every 12 s a new aurora, drifting a new way, spreads from a random spot ---
+static T3C frzAurora(const FrzV& v, float T, uint32_t cyc, T3C green, T3C teal, T3C violet, float bright) {
+  const float th = t3HashS(cyc, 3) * T3_TAU, ct = cos_approx(th), st = sin_approx(th);
+  const float u = v.x * ct + v.z * st, w = -v.x * st + v.z * ct;
+  const float off = (float)(cyc % 97U) * 7.3f;
+  const float n1 = frzNoise(u * 1.8f + T * 0.25f, T * 0.12f + off, w * 1.8f);
+  const float n2 = frzNoise(u * 3.0f - T * 0.3f, 5.0f + off, w * 3.0f + T * 0.2f);
+  const float cur = frzSmooth(0.42f, 0.78f, n1 * 0.7f + n2 * 0.3f);
+  T3C col = t3Lerp(green, teal, frzSmooth(0.0f, 0.6f, v.y));
+  col = t3Lerp(col, violet, frzSmooth(0.5f, 1.0f, v.y + 0.25f * (n2 - 0.5f)));
+  const float rip = 0.65f + 0.35f * sin_t(v.y * 20.0f - T * 4.0f + n1 * 10.0f);
+  return t3Mul(col, cur * rip * bright);
+}
+void mode_frz_northern_lights(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const T3C green = t3C(t3Or(SEGCOLOR(0), 0x28FF8C)), teal = t3C(t3Or(SEGCOLOR(1), 0x28D2D7)), violet = t3C(t3Or(SEGCOLOR(2), 0xAA50FF));
+  const uint32_t cyc = (uint32_t)(T / 12.0f) + 1U; const float ph = t3Frac(T / 12.0f);
+  const FrzV s = frzSeed(cyc, 4);
+  const float R = ph < 0.3f ? ph / 0.3f * 2.7f : 9.0f;                       // the new aurora takes over in the first 3.6 s
+  const float bright = 0.5f + SEGMENT.intensity / 255.0f * 0.7f;             // Intensity: curtain brightness
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const float d = frzDist(v, s);
+    T3C c = frzAurora(v, T, d < R ? cyc : cyc - 1U, green, teal, violet, bright);
+    if (ph < 0.3f && fabsf(R - d) < 0.08f) c = t3Lerp(c, t3Lerp(teal, T3_WHITE, 0.5f), 0.5f);   // soft glowing seam where the new one spreads
+    const float lit = (c.r + c.g + c.b) / 765.0f;
+    c = t3Add(t3Add(FRZ_NIGHT, c), t3Mul(T3_WHITE, frzTw(p, T, 1.2f) * 0.5f * (1.0f - t3Clamp(lit * 2.0f))));
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_FRZ_NORTHERN_LIGHTS[] PROGMEM = "FRZ Northern Lights@!,Brightness;Green,Teal,Violet;;1;sx=128,ix=128,k0=28FF8C,k1=28D2D7,k2=AA50FF";
+
+// --- FRZ Snowflake Burst: ice shells burst out from random spots on the tree, leaving frost glitter behind ---
+void mode_frz_snowflake_burst(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T3C ice, lav, deep; frzColors(ice, lav, deep);
+  const float P = 2.2f; const uint32_t cur = (uint32_t)(T / P);
+  const float linger = 1.3f - SEGMENT.intensity / 255.0f * 1.0f;              // Intensity: how long the frost lingers
+  FrzV c0[3]; float age[3]; bool on[3];
+  for (int j = 0; j < 3; j++) {
+    on[j] = cur >= (uint32_t)j;
+    const uint32_t id = cur - j; age[j] = T - id * P; c0[j] = frzSeed(id, 5);
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    T3C c = FRZ_NIGHT;
+    for (int j = 0; j < 3; j++) {
+      if (!on[j]) continue;
+      const float d = frzDist(v, c0[j]), R = age[j] * 0.9f, q = (d - R) / 0.07f;
+      const float shell = expf(-q * q) * expf(-age[j] * 0.35f);
+      const T3C sc = t3Mul(t3Lerp(ice, T3_WHITE, shell), shell);
+      c = { fmaxf(c.r, sc.r), fmaxf(c.g, sc.g), fmaxf(c.b, sc.b) };
+      if (d < R) {
+        const T3C fr = t3Add(t3Mul(ice, 0.28f * expf(-age[j] * 0.6f * linger)), t3Mul(T3_WHITE, frzTw(p, T, 3.0f) * 0.9f * expf(-age[j] * 0.45f * linger)));
+        c = { fmaxf(c.r, fr.r), fmaxf(c.g, fr.g), fmaxf(c.b, fr.b) };
+      }
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_FRZ_SNOWFLAKE_BURST[] PROGMEM = "FRZ Snowflake Burst@!,Frost linger;Ice,Lavender,Deep blue;;1;sx=128,ix=128,k0=78C8FF,k1=B9A0FF,k2=061030";
+
+// --- FRZ Ice Staircase: steps of ice form one at a time, spiraling up the tree; at the top the tree bursts into pink, purple and blue sparkles ---
+void mode_frz_ice_staircase(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const T3C ice = t3C(t3Or(SEGCOLOR(0), 0x78C8FF)), pink = t3C(t3Or(SEGCOLOR(1), 0xFF50B4)), purple = t3C(t3Or(SEGCOLOR(2), 0xA050FF));
+  const T3C blue = { 50, 110, 255 }, deep = { 6, 16, 48 };
+  const int S = 20; const float step = 0.45f, build = S * step, show = 4.0f, C = build + show;
+  const float ph = fmodf(T, C); const int lit = (int)(ph / step);
+  const float width = 0.5f + SEGMENT.intensity / 255.0f * 0.8f;              // Intensity: step width
+  const float fade = ph > C - 0.8f ? (C - ph) / 0.8f : 1.0f;
+  const T3C base = t3Add(FRZ_NIGHT, t3Mul(ice, 0.08f)), stepCol = t3Lerp(deep, ice, 0.75f);
+  const FrzV mid = { 0.0f, 0.4f, 0.0f };
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    int s = (int)(v.y * S); if (s > S - 1) s = S - 1; if (s < 0) s = 0;
+    const bool onStep = fabsf(frzAngDiff(p.a, s * T3_TAU / 7.0f)) < width;
+    if (ph >= build) {                                                         // finale
+      const float fp = ph - build;
+      T3C c = t3Mul(onStep ? stepCol : base, 0.5f);
+      const float R = fp * 1.8f, q = (frzDist(v, mid) - R) / 0.09f, shell = expf(-q * q);
+      if (frzDist(v, mid) < R) {
+        c = t3Add(c, t3Mul(t3Lerp(purple, blue, 0.5f + 0.5f * sin_t(v.y * 6.0f + T)), 0.18f));   // soft purple-blue wash
+        const float rate = 0.12f + 0.4f * expf(-fp * 0.9f);                   // a dense burst that thins out
+        if (t3Sparkle(p, T, rate)) {
+          const uint32_t pick = (uint32_t)(t3Hash(p.i * 40503U ^ (uint32_t)(T * 12.0f) * 2654435761U) * 3.0f);
+          c = pick == 0 ? pink : (pick == 1 ? purple : blue);
+          if (frzTw(p, T, 6.0f) > 0.5f) c = t3Lerp(c, T3_WHITE, 0.5f);
+        }
+      }
+      c = t3Lerp(c, t3Lerp(pink, T3_WHITE, 0.4f), shell);                    // bright pink ring as the burst spreads
+      t3Set(i, t3Mul(c, fade));
+    } else if (onStep && s < lit) {
+      const float a = ph - s * step;
+      t3Set(i, t3Lerp(stepCol, T3_WHITE, t3Clamp(expf(-a * 3.0f) * 0.9f + frzTw(p, T, 3.0f) * 0.3f)));   // flashes white as it locks in
+    } else if (onStep && s == lit) {
+      t3Set(i, t3Lerp(base, ice, 0.35f * (0.5f + 0.5f * sin_t(T * 12.0f))));
+    } else {
+      t3Set(i, base);
+    }
+  }
+}
+static const char _data_FX_MODE_FRZ_ICE_STAIRCASE[] PROGMEM = "FRZ Ice Staircase@!,Step width;Ice,Pink,Purple;;1;sx=128,ix=128,k0=78C8FF,k1=FF50B4,k2=A050FF";
+
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
   red = t3C(t3Or(SEGCOLOR(0), 0xDC0A14)); green = t3C(t3Or(SEGCOLOR(1), 0x0AAA28)); gold = t3C(t3Or(SEGCOLOR(2), 0xFFB428));
@@ -14460,6 +14672,11 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_3D_UOFM_GLITTER_BREATH, &mode_3d_uofm_glitter_breath, _data_FX_MODE_3D_UOFM_GLITTER_BREATH);
   addEffect(FX_MODE_3D_UOFM_PLASMA, &mode_3d_uofm_plasma, _data_FX_MODE_3D_UOFM_PLASMA);
   addEffect(FX_MODE_3D_UOFM_OMBRE_GLITTER, &mode_3d_uofm_ombre_glitter, _data_FX_MODE_3D_UOFM_OMBRE_GLITTER);
+  addEffect(FX_MODE_FRZ_FROST_BLOOM, &mode_frz_frost_bloom, _data_FX_MODE_FRZ_FROST_BLOOM);
+  addEffect(FX_MODE_FRZ_ICE_PALACE, &mode_frz_ice_palace, _data_FX_MODE_FRZ_ICE_PALACE);
+  addEffect(FX_MODE_FRZ_NORTHERN_LIGHTS, &mode_frz_northern_lights, _data_FX_MODE_FRZ_NORTHERN_LIGHTS);
+  addEffect(FX_MODE_FRZ_SNOWFLAKE_BURST, &mode_frz_snowflake_burst, _data_FX_MODE_FRZ_SNOWFLAKE_BURST);
+  addEffect(FX_MODE_FRZ_ICE_STAIRCASE, &mode_frz_ice_staircase, _data_FX_MODE_FRZ_ICE_STAIRCASE);
   addEffect(FX_MODE_3D_CHRISTMAS_MAGIC_WAND, &mode_3d_christmas_magic_wand, _data_FX_MODE_3D_CHRISTMAS_MAGIC_WAND);
   addEffect(FX_MODE_3D_CHRISTMAS_BACK_GLOW, &mode_3d_christmas_back_glow, _data_FX_MODE_3D_CHRISTMAS_BACK_GLOW);
   addEffect(FX_MODE_3D_CHRISTMAS_NORTH_STAR, &mode_3d_christmas_north_star, _data_FX_MODE_3D_CHRISTMAS_NORTH_STAR);

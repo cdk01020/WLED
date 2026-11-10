@@ -418,8 +418,14 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_CHRISTMAS_NORTH_STAR      157
 #define FX_MODE_3D_CHRISTMAS_SUGARPLUM       158
 #define FX_MODE_3D_CHRISTMAS_HEARTH          159
+// Frozen effects
+#define FX_MODE_FRZ_FROST_BLOOM              169  // was a removed sound-reactive effect
+#define FX_MODE_FRZ_ICE_PALACE               170  // was a removed sound-reactive effect
+#define FX_MODE_FRZ_NORTHERN_LIGHTS          171  // was a removed sound-reactive effect
+#define FX_MODE_FRZ_SNOWFLAKE_BURST          247  // new slot past the old effect list
+#define FX_MODE_FRZ_ICE_STAIRCASE            248  // new slot past the old effect list
 // AI: end
-#define MODE_COUNT                     247
+#define MODE_COUNT                     249
 
 
 #define TRANSITION_FADE            0x00  // universal
