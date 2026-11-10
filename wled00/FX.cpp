@@ -13685,137 +13685,6 @@ void mode_3d_aurora_clouds(void) {
 }
 static const char _data_FX_MODE_3D_AURORA_CLOUDS[] PROGMEM = "3D Aurora Clouds@!,Cloud size;;!;1;sx=128,ix=128";
 
-// --- UofM helpers (Maize, Blue, Green color slots) ---
-static inline void t3UofMColors(T3C& maize, T3C& blue, T3C& green) {
-  maize = t3C(t3Or(SEGCOLOR(0), 0xFFB800)); blue = t3C(t3Or(SEGCOLOR(1), 0x0028FF)); green = t3C(t3Or(SEGCOLOR(2), 0x00A838));
-}
-static inline T3C t3Msu(const T3P& p, float T, T3C green) { return t3Sparkle(p, T, 0.06f) ? T3C{210, 255, 225} : green; }
-static inline T3C t3UmSpark(const T3P& p, float T, T3C base, T3C maize, float rate) { return t3Sparkle(p, T, rate) ? maize : base; }
-
-// --- 3D UofM Victory Bursts: maize blasts inside the tree turn green to blue, one at a time ---
-void mode_3d_uofm_victory_bursts(void) {
-  float T; if (!t3Time(T)) { mode_static(); return; }
-  T3C maize, blue, green; t3UofMColors(maize, blue, green);
-  const float P = 1.4f; const uint32_t n = (uint32_t)(T / P); const uint32_t k = n % 11, cyc = n / 11; const float t = t3Frac(T / P);
-  float cx[8], cy[8], cz[8], rj[8];
-  for (int j = 0; j < 8; j++) {
-    const uint32_t s = cyc * 20 + j;
-    cy[j] = 0.15f + t3HashS(s, 0) * 0.75f;
-    const float r = t3ConeR(cy[j]) * sqrtf(t3HashS(s, 1)), a = t3HashS(s, 2) * T3_TAU;
-    cx[j] = cos_approx(a) * r; cz[j] = sin_approx(a) * r; rj[j] = 0.3f + j * 0.07f;
-  }
-  T3P p;
-  for (int i = 0; i < SEGLEN; i++) {
-    t3Point(i, p);
-    if (k >= 8) { t3Set(i, t3UmSpark(p, T, blue, maize, 0.14f)); continue; }
-    auto dist = [&](int j) { const float dx = p.x - cx[j], dy = p.y - cy[j], dz = p.z - cz[j]; return sqrtf(dx * dx + dy * dy + dz * dz); };
-    const float d = dist(k), R = t * rj[k];
-    T3C c;
-    if (fabsf(d - R) < 0.045f) c = t3Sparkle(p, T, 0.4f) ? T3_WHITE : maize;
-    else if (d < R)            c = t3UmSpark(p, T, blue, maize, 0.05f);
-    else {
-      c = t3Msu(p, T, green);
-      for (uint32_t j = 0; j < k; j++) if (dist(j) < rj[j]) { c = t3UmSpark(p, T, blue, maize, 0.05f); break; }
-    }
-    t3Set(i, c);
-  }
-}
-static const char _data_FX_MODE_3D_UOFM_VICTORY_BURSTS[] PROGMEM = "3D UofM Victory Bursts@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
-
-// --- 3D UofM Back Rush: a maize spark at the back middle, then blue rushes forward ---
-void mode_3d_uofm_back_rush(void) {
-  float T; if (!t3Time(T)) { mode_static(); return; }
-  T3C maize, blue, green; t3UofMColors(maize, blue, green);
-  const float t = t3Frac(T / 7.0f), by = 0.45f, bz = -t3ConeR(by);   // back middle of the tree
-  const float R = 0.04f + powf(t3Clamp((t - 0.1f) / 0.62f), 1.4f) * 1.2f;
-  T3P p;
-  for (int i = 0; i < SEGLEN; i++) {
-    t3Point(i, p);
-    const float dy = p.y - by, dz = p.z - bz, d = sqrtf(p.x * p.x + dy * dy + dz * dz);
-    T3C c;
-    if (t < 0.1f)        c = d < 0.05f + 0.03f * sin_t(T * 10.0f) ? maize : t3Msu(p, T, green);
-    else if (t < 0.72f) {
-      if (fabsf(d - R) < 0.045f) c = t3Sparkle(p, T, 0.4f) ? T3_WHITE : maize;
-      else c = d < R ? t3UmSpark(p, T, blue, maize, 0.06f) : t3Msu(p, T, green);
-    } else               c = sin_t(d * 25.0f - T * 6.0f) > 0.85f ? maize : t3UmSpark(p, T, blue, maize, 0.1f);
-    t3Set(i, c);
-  }
-}
-static const char _data_FX_MODE_3D_UOFM_BACK_RUSH[] PROGMEM = "3D UofM Back Rush@!;Maize,Blue,Green;;1;sx=128,k0=FFB800,k1=0028FF,k2=00A838";
-
-// --- UofM whole-tree color changes with glitter ---
-// The whole tree is one color at a time (maize or blue), covered in glitter. Glitter comes two ways:
-// quick random sparkles (t3Sparkle) and slow glints that swell and fade on their own (t3Glint).
-// The intensity slider ("Glitter") sets how much glitter there is.
-
-// slow glint: about one pixel in six peaks now and then, each at its own pace; returns 0..1
-static inline float t3Glint(const T3P& p, float T, float sp) {
-  const float h = t3Hash(p.i * 977U + 11U), h2 = t3Hash(p.i * 631U + 5U);
-  float s = sin_t(T * sp * (0.6f + h2) + h * T3_TAU);
-  if (s <= 0.0f) return 0.0f;
-  s *= s; s *= s; s *= s; return s * s;                               // sin^16: short, bright peaks
-}
-// whole-tree color n in the maize / blue sequence, and the glitter color that shows best on it
-static inline T3C t3UmCol(uint32_t n, T3C maize, T3C blue) { return (n & 1) ? maize : blue; }
-static inline T3C t3UmGlit(uint32_t n, T3C maize) { return (n & 1) ? T3_WHITE : maize; }
-static inline float t3GlitAmt() { return 0.3f + SEGMENT.intensity / 255.0f * 1.4f; }   // 0.3x .. 1.7x
-// adds the glitter layer on top of a whole-tree color
-static inline T3C t3Glitter(const T3P& p, float T, T3C base, T3C glit, float amt) {
-  if (t3Sparkle(p, T, 0.07f * amt)) return glit;
-  return t3Add(base, t3Mul(T3_WHITE, t3Glint(p, T, 1.6f) * fminf(1.0f, amt)));
-}
-
-// --- 3D UofM Glitter Breath: the whole tree slowly breathes, alternating blue and maize; glitter stays bright when it dims ---
-void mode_3d_uofm_glitter_breath(void) {
-  float T; if (!t3Time(T)) { mode_static(); return; }
-  T3C maize, blue, green; t3UofMColors(maize, blue, green);
-  const uint32_t n = (uint32_t)(T / 5.0f); const float u = t3Frac(T / 5.0f), amt = t3GlitAmt();
-  const float b = 0.12f + 0.88f * (0.5f - 0.5f * cos_approx(u * T3_TAU));   // dark at the start and end of each breath
-  const T3C A = t3Mul(t3UmCol(n, maize, blue), b), G = t3UmGlit(n, maize);
-  T3P p;
-  for (int i = 0; i < SEGLEN; i++) {
-    t3Point(i, p);
-    t3Set(i, t3Glitter(p, T, A, G, amt * (1.6f - b)));                // more glitter while the tree is dim
-  }
-}
-static const char _data_FX_MODE_3D_UOFM_GLITTER_BREATH[] PROGMEM = "UofM Glitter Breath@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
-
-// --- 3D UofM Plasma: slow 3D plasma clouds of blue with hot maize cores drift through the tree ---
-void mode_3d_uofm_plasma(void) {
-  float T; if (!t3Time(T)) { mode_static(); return; }
-  T3C maize, blue, green; t3UofMColors(maize, blue, green);
-  const float s = T * 0.4f, sc = 0.5f + SEGMENT.intensity / 255.0f;
-  T3P p;
-  for (int i = 0; i < SEGLEN; i++) {
-    t3Point(i, p);
-    const float X = p.x * 7.0f * sc, Y = p.y * 5.0f * sc, Z = p.z * 7.0f * sc;
-    const float v = sin_t(X + s) + sin_t(Y * 1.3f - s * 0.8f) + sin_t(Z * 1.2f + s * 0.6f) + sin_t((X - Y + Z) * 0.8f + s * 0.5f);
-    const float u = (v + 4.0f) * 0.125f;                              // 0..1
-    T3C c;
-    if (u < 0.5f)       c = t3Mul(blue, 0.15f + u * 1.7f);            // deep blue up to full blue
-    else if (u < 0.62f) c = t3Lerp(blue, T3_WHITE, (u - 0.5f) / 0.12f * 0.6f);
-    else                c = t3Lerp(t3Lerp(blue, T3_WHITE, 0.6f), maize, t3Clamp((u - 0.62f) / 0.12f));
-    if (u > 0.75f && t3Sparkle(p, T, 0.12f)) c = T3_WHITE;
-    t3Set(i, c);
-  }
-}
-static const char _data_FX_MODE_3D_UOFM_PLASMA[] PROGMEM = "UofM Plasma@!,Cloud size;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
-
-// --- 3D UofM Ombre Glitter: a smooth maize-to-blue blend rolls up the tree so every light keeps changing, all glittering ---
-void mode_3d_uofm_ombre_glitter(void) {
-  float T; if (!t3Time(T)) { mode_static(); return; }
-  T3C maize, blue, green; t3UofMColors(maize, blue, green);
-  const float amt = t3GlitAmt();
-  T3P p;
-  for (int i = 0; i < SEGLEN; i++) {
-    t3Point(i, p);
-    const float v = t3Frac(p.y * 0.8f - T * 0.15f + 0.08f * sin_t(p.a));   // the blend leans a little around the trunk
-    const float m = 0.5f - 0.5f * cos_approx(v * T3_TAU);
-    t3Set(i, t3Glitter(p, T, t3Lerp(blue, maize, m), T3_WHITE, amt));
-  }
-}
-static const char _data_FX_MODE_3D_UOFM_OMBRE_GLITTER[] PROGMEM = "UofM Ombre Glitter@!,Glitter;Maize,Blue,Green;;1;sx=128,ix=128,k0=FFB800,k1=0028FF,k2=00A838";
-
 // --- FRZ: Frozen-style winter magic effects ---
 // These work in a normalized tree space: x and z are divided by the tree's base radius so the tree
 // spans about -1..1 side to side (z = -1 is the street side), and y stays 0 (base) .. 1 (top).
@@ -14028,6 +13897,282 @@ void mode_frz_ice_staircase(void) {
 }
 static const char _data_FX_MODE_FRZ_ICE_STAIRCASE[] PROGMEM = "FRZ Ice Staircase@!,Step width;Ice,Pink,Purple;;1;sx=128,ix=128,k0=78C8FF,k1=FF50B4,k2=A050FF";
 
+// --- 3D Christmas, second set: classic-lights looks and 3D shapes (uses the FRZ normalized tree space) ---
+static const T3C XM_RED = { 255, 18, 12 }, XM_GREEN = { 10, 190, 40 }, XM_GOLD = { 255, 170, 30 }, XM_WARM = { 255, 154, 60 };
+static const T3C XM_PINE = { 3, 40, 14 }, XM_BLUE = { 40, 70, 255 }, XM_SILVER = { 200, 215, 255 }, XM_MAG = { 255, 40, 140 };
+static const T3C XM_DEEP = { 6, 16, 48 };
+static constexpr float XM_YS = FRZ_INV_R;            // multiply heights by this for true tree proportions (round shapes)
+
+// position of map pixel idx in the normalized tree space
+static FrzV xmPix(uint16_t idx) {
+  if (idx >= TREE3D_N) idx = TREE3D_N - 1;
+  const float x = (int8_t)pgm_read_byte(&tree3d_x[idx]) * TREE3D_XZ_SCALE;
+  const float y = pgm_read_byte(&tree3d_y[idx]) * TREE3D_Y_SCALE;
+  const float z = (int8_t)pgm_read_byte(&tree3d_z[idx]) * TREE3D_XZ_SCALE;
+  return { x * FRZ_INV_R, y, -z * FRZ_INV_R };
+}
+static inline uint16_t xmRandIdx(uint32_t a, uint32_t k) { uint16_t i = (uint16_t)(t3HashS(a, k) * TREE3D_N); return i >= TREE3D_N ? TREE3D_N - 1 : i; }
+static inline float xmConeR(float y) { return t3ConeR(t3Clamp(y)) * FRZ_INV_R; }   // outer radius at height y, normalized
+static inline T3C xmPick5(float h, T3C a, T3C b, T3C c, T3C d, T3C e) {
+  const int k = (int)(h * 5.0f); return k <= 0 ? a : k == 1 ? b : k == 2 ? c : k == 3 ? d : e;
+}
+
+// --- 3D Christmas Vintage Bulbs: big-bulb multicolor lights; pixels are grouped by where they sit into ~70 glowing "bulbs" ---
+#define XM_BULBS 70
+struct XmBulbs { T3State st; uint8_t built; uint8_t cell[TREE3D_N]; };
+void mode_3d_christmas_vintage_bulbs(void) {
+  if (!SEGENV.allocateData(sizeof(XmBulbs))) { mode_static(); return; }
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  XmBulbs* d = reinterpret_cast<XmBulbs*>(SEGENV.data);
+  if (SEGENV.call == 0) d->built = 0;
+  FrzV seeds[XM_BULBS];
+  for (int k = 0; k < XM_BULBS; k++) seeds[k] = xmPix(xmRandIdx(k, 9));
+  if (!d->built) {                                                         // work out once which bulb each pixel belongs to
+    for (int i = 0; i < TREE3D_N; i++) {
+      const FrzV v = xmPix(i); float bd = 1e9f; uint8_t best = 0;
+      for (int k = 0; k < XM_BULBS; k++) {
+        const float dx = v.x - seeds[k].x, dy = v.y - seeds[k].y, dz = v.z - seeds[k].z, dd = dx * dx + dy * dy + dz * dz;
+        if (dd < bd) { bd = dd; best = k; }
+      }
+      d->cell[i] = best;
+    }
+    d->built = 1;
+  }
+  // red, green, blue, amber, pink twice each per 11 bulbs and teal once, so teal is an accent
+  static const T3C cols[11] = { XM_RED, XM_GREEN, XM_BLUE, {255,140,10}, {255,70,150}, XM_RED, XM_GREEN, XM_BLUE, {255,140,10}, {255,70,150}, {0,200,170} };
+  const float warmth = SEGMENT.intensity / 255.0f * 0.36f;                  // Intensity: incandescent warmth (default about 0.18)
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const uint16_t idx = SEGMENT.start + i;
+    const int k = idx < TREE3D_N ? d->cell[idx] : (i % XM_BULBS);
+    const T3C col = t3Lerp(cols[k % 11], XM_WARM, warmth);
+    const float fl = 0.82f + 0.18f * frzNoise(T * 1.5f + k * 3.1f, (float)k, 0.5f);
+    const float dimPh = t3Frac(T * 0.03f + t3Hash(k * 4U + 4U));
+    const float dim = dimPh < 0.06f ? 0.35f + 0.65f * fabsf(dimPh / 0.03f - 1.0f) : 1.0f;   // now and then a bulb dims and warms back up
+    const float glow = 0.75f + 0.25f * (1.0f - t3Clamp(frzDist(v, seeds[k]) / 0.35f));
+    t3Set(i, t3Mul(col, fl * dim * glow));
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_VINTAGE_BULBS[] PROGMEM = "3D Christmas Vintage Bulbs@!,Warmth;;;1;sx=128,ix=128";
+
+// --- 3D Christmas Candle Breeze: warm incandescent glow with slow 3D drafts, and a candle flaring up now and then ---
+void mode_3d_christmas_candle_breeze(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const T3C glow = t3C(t3Or(SEGCOLOR(0), 0xFF9A3C)), deepC = { 255, 110, 20 }, bright = { 255, 200, 140 }, flareC = { 255, 215, 160 };
+  const float depth = 0.3f + SEGMENT.intensity / 255.0f * 0.6f;            // Intensity: depth of the drafts (default 0.6)
+  const float P = 2.6f; const uint32_t cur = (uint32_t)(T / P);
+  float fAge[2]; FrzV fC[2]; bool fOn[2];
+  for (int j = 0; j < 2; j++) {
+    fOn[j] = cur >= (uint32_t)j; const uint32_t id = cur - j;
+    fAge[j] = T - (id * P + t3HashS(id, 8) * 1.2f); fC[j] = xmPix(xmRandIdx(id, 6));
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const float b = (1.0f - depth) + depth * frzNoise(v.x * 1.5f + T * 0.5f, v.y * 2.2f - T * 0.18f, v.z * 1.5f + T * 0.2f);
+    const float r1 = t3Hash(p.i * 2971U + 3U), r2 = t3Hash(p.i * 6151U + 9U);
+    const float fl = 0.92f + 0.08f * sin_t(T * 9.0f * (0.7f + r1) + r2 * 50.0f);
+    T3C c = t3Mul(t3Lerp(deepC, t3Lerp(glow, bright, frzSmooth(0.75f, 1.0f, b)), b), (0.35f + 0.65f * b) * fl);
+    for (int j = 0; j < 2; j++) {
+      if (!fOn[j] || fAge[j] < 0.0f || fAge[j] > 1.6f) continue;
+      const float k = fAge[j] < 0.25f ? fAge[j] / 0.25f : expf(-(fAge[j] - 0.25f) * 2.4f);   // quick rise, slow fade
+      const float fall = fmaxf(0.0f, 1.0f - frzDist(v, fC[j]) / 0.45f);
+      c = t3Lerp(c, flareC, k * fall * fall * (0.85f + 0.15f * sin_t(T * 25.0f + r2 * 9.0f)));
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_CANDLE_BREEZE[] PROGMEM = "3D Christmas Candle Breeze@!,Draft depth;Glow;;1;sx=128,ix=128,k0=FF9A3C";
+
+// --- 3D Christmas Ornament Bloom: round glass ornaments appear one by one until the tree is full, then sparkle away ---
+#define XM_ORN_MAX 60
+struct XmOrn { float x, y, z; uint8_t col; };
+struct XmOrnState { T3State st; uint32_t cyc; float t0; uint8_t n, ready; XmOrn o[XM_ORN_MAX]; };
+static void xmOrnBuild(XmOrnState* s, float R) {                           // random spots, none overlapping, until no room is left
+  s->n = 0;
+  for (int k = 0; k < 400 && s->n < XM_ORN_MAX; k++) {
+    const FrzV c = xmPix(xmRandIdx(s->cyc * 1000U + k, 3));
+    bool ok = true;
+    for (int j = 0; j < s->n && ok; j++) {
+      const float dx = c.x - s->o[j].x, dy = (c.y - s->o[j].y) * XM_YS, dz = c.z - s->o[j].z;
+      if (dx * dx + dy * dy + dz * dz < (R * 1.6f) * (R * 1.6f)) ok = false;
+    }
+    if (ok) { s->o[s->n] = { c.x, c.y, c.z, (uint8_t)(t3HashS(s->cyc * 31U + k, 5) * 255.0f) }; s->n++; }
+  }
+}
+void mode_3d_christmas_ornament_bloom(void) {
+  if (!SEGENV.allocateData(sizeof(XmOrnState))) { mode_static(); return; }
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  XmOrnState* s = reinterpret_cast<XmOrnState*>(SEGENV.data);
+  if (SEGENV.call == 0) s->ready = 0;
+  const float R = 0.18f + SEGMENT.intensity / 255.0f * 0.18f;               // Intensity: ornament size (default 0.27)
+  const float STEP = 0.3f;
+  if (!s->ready || T < s->t0) { s->cyc = 0; s->t0 = T; xmOrnBuild(s, R); s->ready = 1; }
+  float len = s->n * STEP + 1.0f + 2.8f + 0.6f;
+  if (T - s->t0 >= len) { s->t0 += len; s->cyc++; xmOrnBuild(s, R); len = s->n * STEP + 4.4f; if (T - s->t0 >= len) s->t0 = T; }
+  const float ph = T - s->t0, full = s->n * STEP, popAt = full + 1.0f;
+  const bool usePal = SEGMENT.palette != 0;                                  // Default palette: red, gold, green, silver, magenta
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    T3C c = t3Add(t3Mul(XM_PINE, 0.9f), t3Mul(XM_WARM, frzTw(p, T, 1.5f) * 0.35f));
+    for (int k = 0; k < s->n; k++) {
+      const float age = ph - k * STEP; if (age < 0.0f) break;
+      const XmOrn& o = s->o[k];
+      const float dx = v.x - o.x, dy = (v.y - o.y) * XM_YS, dz = v.z - o.z;
+      const float dd = dx * dx + dy * dy + dz * dz; if (dd > R * R) continue;
+      const float d = sqrtf(dd);
+      const T3C col = usePal ? t3Pal(o.col / 255.0f) : xmPick5(o.col / 256.0f, XM_RED, XM_GOLD, XM_GREEN, XM_SILVER, XM_MAG);
+      if (ph < popAt) {
+        const float r = R * sin_t(fminf(1.0f, age / 0.35f) * 1.5707963f);    // swells into place
+        if (d < r) {
+          const float inv = d > 0.0f ? 1.0f / d : 0.0f;
+          float hl = fmaxf(0.0f, (-0.45f * dx + 0.55f * dy - 0.7f * dz) * inv);   // highlight on the side facing the street
+          hl = hl * hl * hl; hl *= hl;
+          const float shade = 0.35f + 0.65f * sqrtf(fmaxf(0.0f, 1.0f - (d / r) * (d / r)));
+          c = t3Lerp(t3Mul(col, shade), T3_WHITE, hl * 0.9f);
+        }
+      } else {                                                                // sparkle away: each pixel twinkles and winks out on its own
+        const float g = ph - popAt, end = 0.4f + t3Hash(p.i * 977U + k * 131U + 17U) * 2.6f;
+        if (g < end) {
+          const float shade = 0.35f + 0.65f * sqrtf(fmaxf(0.0f, 1.0f - (d / R) * (d / R)));
+          c = t3Sparkle(p, T * 0.833f, 0.35f) ? t3Lerp(col, T3_WHITE, 0.45f) : t3Mul(col, shade * (1.0f - 0.6f * g / end));
+        }
+      }
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_ORNAMENT_BLOOM[] PROGMEM = "3D Christmas Ornament Bloom@!,Ornament size;;!;1;sx=128,ix=128,pal=0";
+
+// --- 3D Christmas Crystal Kaleidoscope: a bold six-sided snowflake pattern wrapped around the trunk, slowly turning ---
+void mode_3d_christmas_crystal_kaleidoscope(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const T3C green = t3C(t3Or(SEGCOLOR(0), 0x0ABE28)), red = t3C(t3Or(SEGCOLOR(1), 0xFF120C)), gold = t3C(t3Or(SEGCOLOR(2), 0xFFAA1E));
+  const float sc = 0.6f + SEGMENT.intensity / 255.0f * 0.8f;               // Intensity: pattern detail (default 1.0)
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const float a = atan2f(v.z, v.x) + T * 0.2f, f = fabsf(t3Frac(a * 6.0f / T3_TAU / 2.0f) * 2.0f - 1.0f);   // 0..1 across each mirrored sixth
+    const float r = sqrtf(v.x * v.x + v.z * v.z) / fmaxf(0.05f, xmConeR(v.y));
+    const float w = 0.5f + 0.46f * sin_t((f * 2.2f + r * 1.2f + v.y * 2.2f) * sc - T * 0.8f);
+    T3C c = w < 0.43f ? green : (w < 0.92f ? red : gold);                  // gold only on the crests, as an accent
+    if (fabsf(w - 0.43f) < 0.05f || fabsf(w - 0.92f) < 0.012f) c = T3_WHITE; // white outlines
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_KALEIDOSCOPE[] PROGMEM = "3D Christmas Crystal Kaleidoscope@!,Detail;Green,Red,Gold;;1;sx=128,ix=128,k0=0ABE28,k1=FF120C,k2=FFAA1E";
+
+// --- 3D Christmas Shooting Stars: stars streak through the tree on straight 3D lines with gold or silver tails ---
+void mode_3d_christmas_shooting_stars(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const float P = 2.0f - SEGMENT.intensity / 255.0f * 1.4f;                // Intensity: how many stars (default one every 1.3 s)
+  const uint32_t cur = (uint32_t)(T / P);
+  struct Star { float age, o[3], d[3]; bool gold; bool on; } S[10];
+  for (int j = 0; j < 10; j++) {
+    const uint32_t id = cur - j; S[j].on = cur >= (uint32_t)j; if (!S[j].on) continue;
+    const float a = t3HashS(id, 1) * T3_TAU, el = (t3HashS(id, 2) - 0.5f);
+    S[j].d[0] = cos_approx(a) * cos_approx(el); S[j].d[1] = sin_approx(el); S[j].d[2] = sin_approx(a) * cos_approx(el);
+    S[j].o[0] = (t3HashS(id, 4) - 0.5f) * 1.2f; S[j].o[1] = (0.25f + 0.6f * t3HashS(id, 5)) * 2.0f; S[j].o[2] = (t3HashS(id, 6) - 0.5f) * 1.2f;
+    S[j].age = T - id * P; S[j].gold = t3HashS(id, 7) < 0.5f;
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    T3C c = t3Add(t3Mul(XM_DEEP, 0.7f), t3Mul(XM_WARM, frzTw(p, T, 1.0f) * 0.3f));
+    for (int j = 0; j < 10; j++) {
+      if (!S[j].on) continue;
+      const float along = S[j].age - 2.4f;                                  // working space: height doubled
+      const float rx = v.x - S[j].o[0], ry = v.y * 2.0f - S[j].o[1], rz = v.z - S[j].o[2];
+      const float proj = rx * S[j].d[0] + ry * S[j].d[1] + rz * S[j].d[2];
+      const float ex = rx - proj * S[j].d[0], ey = ry - proj * S[j].d[1], ez = rz - proj * S[j].d[2];
+      const float off = sqrtf(ex * ex + ey * ey + ez * ez);
+      if (off > 0.16f) continue;
+      const float behind = along - proj;
+      if (behind < -0.06f || behind > 1.1f) continue;
+      const float I = (1.0f - off / 0.16f) * (behind < 0.08f ? 1.0f : expf(-(behind - 0.08f) * 3.0f));
+      c = t3Add(c, t3Mul(behind < 0.08f ? T3_WHITE : (S[j].gold ? XM_GOLD : XM_SILVER), I));
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_SHOOTING_STARS[] PROGMEM = "3D Christmas Shooting Stars@!,Stars;;;1;sx=128,ix=128";
+
+// --- 3D Christmas Present Pile: the tree fills with 3D gift boxes from the bottom up, then they open one by one ---
+void mode_3d_christmas_present_pile(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const float C = 16.0f; const uint32_t cyc = (uint32_t)(T / C); const float ph = fmodf(T, C);
+  const float rib = 0.5f + SEGMENT.intensity / 255.0f;                      // Intensity: ribbon brightness
+  const T3C ribbon = t3Mul(t3Lerp(XM_GOLD, T3_WHITE, 0.15f), fminf(1.0f, rib));
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const float gx = (v.x + 1.2f) / 0.42f, gy = v.y / 0.14f, gz = (v.z + 1.2f) / 0.42f;
+    const int cx = (int)floorf(gx), cy = (int)floorf(gy), cz = (int)floorf(gz);
+    const float h = t3Hash((uint32_t)(cx * 31 + cz * 7) * 2654435761U ^ (uint32_t)cy * 40503U ^ cyc * 97U);
+    const T3C col = xmPick5(h, XM_RED, XM_GREEN, XM_BLUE, XM_MAG, XM_SILVER);
+    const float appear = cy * 0.95f + h * 0.8f;
+    const float open = 10.0f + t3Hash((uint32_t)(cx * 977 + cz * 13 + cy) ^ (cyc + 5U) * 7919U) * 4.5f;
+    if (ph < appear) { t3Set(i, t3Mul(XM_PINE, 0.5f)); continue; }
+    if (ph > open) {                                                           // opened: a burst of sparkle, then empty
+      const float g = ph - open;
+      t3Set(i, g < 0.8f ? (t3Sparkle(p, T * 1.17f, 0.5f) ? t3Lerp(col, T3_WHITE, 0.4f) : t3Mul(col, 0.2f)) : t3Mul(XM_PINE, 0.5f));
+      continue;
+    }
+    const float lx = t3Frac(gx), ly = t3Frac(gy), lz = t3Frac(gz);
+    T3C c = t3Mul(col, 0.75f);
+    if (fabsf(lx - 0.5f) < 0.12f || fabsf(lz - 0.5f) < 0.12f) c = ribbon;    // ribbon cross
+    if (ly < 0.12f) c = t3Mul(c, 0.5f);                                       // shadow line between stacked boxes
+    t3Set(i, t3Lerp(c, T3_WHITE, expf(-(ph - appear) * 4.0f)));              // white flash as it lands
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_PRESENT_PILE[] PROGMEM = "3D Christmas Present Pile@!,Ribbon brightness;;;1;sx=128,ix=128";
+
+// --- 3D Christmas Snow Fill: a solid glow (or the palette); snow falls and piles up from the base until the tree is white, then flutters away ---
+void mode_3d_christmas_snow_fill(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  const T3C glowC = t3C(t3Or(SEGCOLOR(0), 0xFF9A3C)), snowW = t3C(t3Or(SEGCOLOR(1), 0xFFFFFF));
+  const bool usePal = SEGMENT.palette != 0;                                  // Default palette: the solid Glow color
+  const float C = 26.0f, fill = 18.0f; const uint32_t cyc = (uint32_t)(T / C); const float ph = fmodf(T, C);
+  const float L = ph < fill ? (ph / fill) * 1.08f - 0.04f : 1.1f;
+  const int nF = 10 + (SEGMENT.intensity * 40) / 255;                         // Intensity: number of flakes (default 30)
+  FrzV F[50];
+  if (ph < fill) {
+    for (int k = 0; k < nF; k++) {
+      const float sp = 0.35f + 0.3f * t3HashS(k, 1), w = T * sp + t3HashS(k, 2), u = t3Frac(w);
+      const uint32_t drop = (uint32_t)w;                                      // each fall picks a new spot
+      const float a = t3HashS(k * 131U + drop, 3) * T3_TAU, r = sqrtf(t3HashS(k * 131U + drop, 4)) * 0.95f;
+      const float y = 1.05f - u * (1.05f - fmaxf(0.0f, L)), cr = xmConeR(y);
+      F[k] = { r * cos_approx(a) * cr, y, r * sin_approx(a) * cr };
+    }
+  }
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p); const FrzV v = frzN(p);
+    const T3C glow = usePal ? t3Pal(v.y * 0.9f) : glowC;
+    const T3C snowCol = t3Mul(snowW, 0.9f + 0.1f * frzNoise(v.x * 6.0f, v.y * 6.0f + T * 0.3f, v.z * 6.0f));
+    if (ph >= fill) {
+      const float g = ph - fill;
+      if (g < 1.2f) { t3Set(i, t3Lerp(snowCol, snowW, frzTw(p, T, 4.0f))); continue; }   // fully white, glittering
+      const float dd = g - (1.2f + t3Hash(p.i * 2741U + cyc * 21U) * 4.5f);   // each pixel flutters away at its own moment
+      if (dd < 0.0f) t3Set(i, snowCol);
+      else if (dd < 0.35f) t3Set(i, ((int)(dd * 20.0f) & 1) ? snowW : glow);
+      else t3Set(i, glow);
+      continue;
+    }
+    const float surf = L + 0.04f * (frzNoise(v.x * 3.0f + cyc, 0.5f, v.z * 3.0f) - 0.5f);
+    if (v.y < surf) { t3Set(i, fabsf(v.y - surf) < 0.03f ? snowW : snowCol); continue; }
+    T3C c = glow;
+    for (int k = 0; k < nF; k++) {
+      const float dx = v.x - F[k].x, dy = (v.y - F[k].y) * 2.2f, dz = v.z - F[k].z, dd = dx * dx + dy * dy + dz * dz;
+      if (dd < 0.0144f) c = t3Lerp(c, snowW, 1.0f - sqrtf(dd) / 0.12f);
+    }
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_3D_CHRISTMAS_SNOW_FILL[] PROGMEM = "3D Christmas Snow Fill@!,Flakes;Glow,Snow;!;1;sx=128,ix=128,pal=0,k0=FF9A3C,k1=FFFFFF";
+
 // --- Christmas helpers (Red, Green, Gold color slots) ---
 static inline void t3XmasColors(T3C& red, T3C& green, T3C& gold) {
   red = t3C(t3Or(SEGCOLOR(0), 0xDC0A14)); green = t3C(t3Or(SEGCOLOR(1), 0x0AAA28)); gold = t3C(t3Or(SEGCOLOR(2), 0xFFB428));
@@ -14157,462 +14302,6 @@ void mode_3d_christmas_hearth(void) {
 static const char _data_FX_MODE_3D_CHRISTMAS_HEARTH[] PROGMEM = "3D Christmas Hearth@!,Flame height;;;1;sx=128,ix=128";
 // AI: end
 
-// AI: below section was generated by an AI
-/*
- * Go Blue effects: Michigan maize & blue crushing Michigan State green & white on the tree.
- * Color 1 = maize, Color 2 = blue, Color 3 = the rival green. Defaults are LED-friendly versions of the
- * team colors (true navy is nearly black on LEDs). They use the same tree geometry as the Halloween,
- * Christmas and Fun Day effects ("Tree wraps" = how many times the strand goes around the tree).
- */
-
-// move sparks with gravity g (tree heights/s^2), draw them and drop dead ones.
-// k=0 sparks use c0, k=1 use c1; if cool isn't BLACK they fade toward it over their life (white-hot -> maize)
-static void gbSparks(FdP* p, uint8_t& n, float dts, float g, uint16_t len, float N, uint32_t c0, uint32_t c1, uint32_t cool, float size, float bright) {
-  for (int j = 0; j < n; ) {
-    FdP& s = p[j];
-    s.life += dts;
-    if (s.life >= s.max || s.h < -0.03f) { p[j] = p[--n]; continue; }
-    s.vh -= g * dts;
-    s.h += s.vh * dts;
-    s.a += s.va / max(fdRad(hwClamp01(s.h)), 0.06f) * dts;
-    const float lf = s.life / s.max;
-    uint32_t c = s.k ? c1 : c0;
-    if (cool != BLACK) c = hwMix(c, cool, lf * 1.4f);
-    const float k = (1.0f - lf) * (0.6f + 0.4f * sin_approx(s.life * 23.0f + j)) * bright;
-    hwBlob(len, N, s.h, s.a, 0.009f * size, 0.013f * size, c, k);
-    j++;
-  }
-}
-// add one spark at height h / angle a with vertical speed vh and surface speed va
-static inline void gbSpark(FdP* p, uint8_t& n, uint8_t cap, float h, float a, float vh, float va, float maxLife, uint8_t k) {
-  if (n >= cap) return;
-  FdP& s = p[n++];
-  s.h = h; s.a = a; s.vh = vh; s.va = va; s.life = 0.0f; s.max = maxLife; s.k = k;
-}
-// radial burst of cnt sparks
-static void gbBurst(FdP* p, uint8_t& n, uint8_t cap, float h, float a, int cnt, float spd, float up) {
-  for (int k = 0; k < cnt; k++) {
-    const float th = hwRand() * HW_TAU, v = spd * (0.3f + 0.7f * hwRand());
-    gbSpark(p, n, cap, h, a, v * cos_approx(th) + up, v * sin_approx(th), 0.8f + 1.2f * hwRand(), k & 1);
-  }
-}
-// spiral stripe mask 0..1 (count stripes around the tree, slant = turns of twist bottom to top)
-static inline float gbStripe(float az, float h, float count, float slant, float off) {
-  return hwSmooth((sin_approx(HW_TAU * (count * az + slant * h + off)) + 0.15f) * 2.5f);
-}
-
-/*
- * Go Blue Takeover: the tree starts split, maize & blue on the bottom and green & white on top, with
- * sparks flying where they meet. Then maize & blue surges up the tree in pushes, crushing the green into
- * a shrinking cap, which shatters at the tip into sparks that fall and turn maize. The whole tree then
- * celebrates in rotating maize & blue stripes with glitter and a flashing star, and the game restarts.
- */
-struct GbTake { uint32_t last; float tt, phT, spin; uint8_t phase, n; FdP p[90]; };
-
-void mode_goblue_takeover(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbTake))) { mode_static(); return; }
-  GbTake* st = reinterpret_cast<GbTake*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbTake)); st->last = strip.now; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
-  const float pushT = 9.0f - SEGMENT.speed / 255.0f * 6.0f;          // 3..9 s to take the tree
-  const float holdT = 2.0f + SEGMENT.custom1 / 255.0f * 18.0f;       // 2..20 s celebration
-  const float glit = 0.4f + SEGMENT.intensity / 255.0f * 2.6f;
-  const float durs[5] = { 2.5f, pushT, 1.6f, holdT, 1.2f };
-
-  st->phT += dts;
-  if (st->phT >= durs[st->phase]) {
-    st->phT = 0.0f;
-    st->phase = (st->phase + 1) % 5;
-    if (st->phase == 2) {  // the green cap shatters at the tip
-      for (int k = 0; k < 90; k++) gbSpark(st->p, st->n, 90, 0.86f + 0.13f * hwRand(), hwRand() * HW_TAU,
-                                          0.05f + 0.25f * hwRand(), (hwRand() - 0.5f) * 0.4f, 1.2f + 1.3f * hwRand(), k & 1);
-    }
-  }
-  st->spin += dts * (0.15f + SEGMENT.speed / 255.0f * 0.35f);
-  if (st->spin > 1000.0f) st->spin -= 1000.0f;
-  const uint8_t ph = st->phase;
-  const float p = hwClamp01(st->phT / durs[ph]);
-
-  // the front line between the teams (it ripples around the tree)
-  float front = 1.2f, press = 0.0f;
-  if (ph == 0)      front = 0.45f + 0.04f * sin_approx(tt * 2.3f);
-  else if (ph == 1) { front = 0.45f + 0.62f * hwSmooth(p) + 0.04f * sin_approx(p * HW_TAU * 4.0f) * (1.0f - p); press = p; }
-  if (ph == 4) front = 0.45f;
-  const bool showFront = ph <= 1 || ph == 4;
-  const float fade = ph == 4 ? hwSmooth(p) : 1.0f;                   // 4: crossfade from celebration back to the split
-  const float flash = ph == 2 ? expf(-st->phT * 3.0f) : 0.0f;
-
-  // clash sparks fly up into the green
-  if (SEGMENT.check2 && ph == 1) {
-    const int cnt = (int)(dts * (8.0f + SEGMENT.custom2 / 255.0f * 50.0f) + hwRand());
-    for (int k = 0; k < cnt; k++) gbSpark(st->p, st->n, 90, front, hwRand() * HW_TAU, 0.1f + 0.25f * hwRand(),
-                                         (hwRand() - 0.5f) * 0.3f, 0.4f + 0.6f * hwRand(), hw_random8() & 1);
-  }
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = hwPixAz(i, h, N);
-    // celebration look: blue with turning maize stripes, glitter
-    uint32_t win;
-    {
-      const float m = SEGMENT.check1 ? gbStripe(az, h, 3.0f, 2.0f, -st->spin) : 0.0f;
-      win = hwMix(hwColor(blue, 0.7f), maize, m * 0.9f);
-      float g = xmTwinkle(i, tt * 1.4f, glit, 301); if (g > 0.0f) win = color_add(win, hwColor(maize, g));
-      g = xmTwinkle(i, tt * 1.7f, glit * 0.6f, 307); if (g > 0.0f) win = color_add(win, hwColor(WHITE, g));
-    }
-    uint32_t col = win;
-    if (showFront) {
-      const float fl = front + 0.035f * sin_approx(HW_TAU * (2.0f * az) + tt * 3.0f);
-      const float d = h - fl;
-      uint32_t split;
-      if (d < 0.0f) {  // maize & blue side
-        const float m = gbStripe(az, h, 2.0f, 4.0f, -tt * 0.4f);
-        split = hwMix(hwColor(blue, 0.55f), hwColor(maize, 0.8f), m * 0.6f);
-        const float g = xmTwinkle(i, tt, glit * 0.5f, 311); if (g > 0.0f) split = color_add(split, hwColor(maize, g));
-      } else {          // green & white side, glowing hotter as it gets crushed
-        const float k = 0.4f + 0.35f * press + 0.15f * press * sin_approx(tt * 18.0f + h * 40.0f);
-        split = hwColor(green, k * (0.7f + 0.3f * hwNoise(az * 6.0f, h * 8.0f + tt * 0.3f)));
-        const float g = xmTwinkle(i, tt, glit * 0.4f, 313); if (g > 0.0f) split = color_add(split, hwColor(WHITE, g * 0.8f));
-      }
-      // the clash line
-      const float c = hwGauss((d / 0.022f) * (d / 0.022f));
-      if (c > 0.01f) {
-        split = color_add(split, hwColor(WHITE, c * (0.35f + 0.25f * sin_approx(tt * 25.0f + i))));
-        const float g = xmTwinkle(i, tt * 3.0f, 8.0f * c, 317); if (g > 0.0f) split = color_add(split, hwColor(maize, g));
-      }
-      col = ph == 4 ? hwMix(win, split, fade) : split;
-    }
-    if (flash > 0.0f) col = color_add(col, hwColor(WHITE, 0.6f * flash));
-    SEGMENT.setPixelColor(i, col);
-  }
-  // star on the tip during the celebration
-  if (ph == 2 || ph == 3) {
-    const float k = (ph == 2 ? p : 1.0f) * (0.7f + 0.5f * fabsf(sin_approx(tt * 4.0f)));
-    hwBlob(len, N, 0.985f, 0.0f, 0.03f, 0.2f, maize, k);
-  }
-  gbSparks(st->p, st->n, dts, 0.15f, len, N, green, WHITE, maize, 1.0f, 1.2f);
-}
-static const char _data_FX_MODE_GOBLUE_TAKEOVER[] PROGMEM = "UofM Takeover@Push speed,Glitter,Celebration time,Clash sparks,Tree wraps,Victory stripes,Clash spark spray,;Maize,Blue,Green;;1;sx=110,ix=120,c1=90,c2=120,c3=12,o1=1,o2=1,k0=FFB800,k1=0028FF,k2=00A838";
-
-/*
- * Go Blue Victors March: the whole tree marches to a fight-song tempo. Maize & blue spiral stripes step
- * around the tree on every beat, bright bands climb the tree a step at a time like a marching band, and
- * every 8 beats a "hail" of white-hot sparks bursts from the tip and rains down, cooling to maize.
- */
-struct GbMarch { uint32_t last; float tt, beat; int32_t lastBeat; uint8_t n; FdP p[90]; };
-
-void mode_goblue_march(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbMarch))) { mode_static(); return; }
-  GbMarch* st = reinterpret_cast<GbMarch*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbMarch)); st->last = strip.now; st->lastBeat = -1; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF);
-  const float bpm = 60.0f + SEGMENT.speed / 255.0f * 120.0f;             // 60..180 beats a minute
-  st->beat += dts * bpm / 60.0f;
-  if (st->beat > 4096.0f) { st->beat -= 4096.0f; st->lastBeat -= 4096; }
-  const int32_t bn = (int32_t)st->beat;
-  const float bp = st->beat - bn;
-  const bool hailBeat = SEGMENT.check2 && (bn & 7) == 0;
-  if (bn != st->lastBeat) {
-    st->lastBeat = bn;
-    if (hailBeat) for (int k = 0; k < 80; k++)
-      gbSpark(st->p, st->n, 90, 0.96f + 0.03f * hwRand(), hwRand() * HW_TAU, 0.05f + 0.2f * hwRand(), (hwRand() - 0.5f) * 0.5f, 1.5f + 1.5f * hwRand(), 0);
-  }
-  const float pulse = expf(-bp * 5.0f);
-  const float stripes = 1.0f + SEGMENT.custom1 / 255.0f * 5.0f;
-  const float step = (bn + hwSmooth(bp * 4.0f)) * 0.5f;                   // stripes step half a stripe each beat
-  const float glit = SEGMENT.intensity / 255.0f * 2.5f;
-  const float bandK = SEGMENT.custom2 / 255.0f * 1.2f;
-  const float climb = (bn + hwSmooth(bp * 3.0f)) / 8.0f;                  // bands climb 1/8 of the tree a beat
-  const float hailFlash = hailBeat ? pulse : 0.0f;
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = hwPixAz(i, h, N);
-    const float m = gbStripe(az, h, stripes, 1.5f, -step / stripes);
-    uint32_t col = hwMix(hwColor(blue, 0.8f), maize, m);
-    col = hwColor(col, 0.5f + 0.4f * pulse);
-    if (SEGMENT.check1 && bandK > 0.0f) {
-      for (int b = 0; b < 2; b++) {
-        float d = h - xmFrac(climb + b * 0.5f);
-        d -= floorf(d + 0.5f);
-        const float v = hwGauss((d / 0.03f) * (d / 0.03f));
-        if (v > 0.01f) col = color_add(col, hwColor(hwMix(maize, WHITE, 0.35f), v * bandK * (0.6f + 0.4f * pulse)));
-      }
-    }
-    float g = xmTwinkle(i, tt * 1.5f, glit, 601); if (g > 0.0f) col = color_add(col, hwColor(WHITE, g));
-    if (SEGMENT.check3) { g = xmTwinkle(i, tt * 1.2f, glit * 0.7f, 607); if (g > 0.0f) col = color_add(col, hwColor(maize, g)); }
-    if (hailFlash > 0.0f) col = color_add(col, hwColor(WHITE, 0.45f * hailFlash));
-    SEGMENT.setPixelColor(i, col);
-  }
-  hwBlob(len, N, 0.985f, 0.0f, 0.025f, 0.2f, maize, 0.5f + 0.7f * pulse);
-  gbSparks(st->p, st->n, dts, 0.12f, len, N, WHITE, WHITE, maize, 1.0f, 1.3f);
-}
-static const char _data_FX_MODE_GOBLUE_MARCH[] PROGMEM = "UofM Victors March@Tempo,Glitter,Stripes,Band brightness,Tree wraps,Climbing bands,Hail every 8 beats,Maize glitter;Maize,Blue;;1;sx=128,ix=110,c1=60,c2=150,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF";
-
-// the shared "we won" look: blue with turning maize stripes and maize / white glitter
-static uint32_t gbVictory(int i, float h, float az, float tt, float spin, float glit, uint32_t maize, uint32_t blue) {
-  uint32_t c = hwMix(hwColor(blue, 0.7f), maize, gbStripe(az, h, 3.0f, 2.0f, -spin) * 0.9f);
-  float g = xmTwinkle(i, tt * 1.4f, glit, 701); if (g > 0.0f) c = color_add(c, hwColor(maize, g));
-  g = xmTwinkle(i, tt * 1.7f, glit * 0.6f, 709); if (g > 0.0f) c = color_add(c, hwColor(WHITE, g));
-  return c;
-}
-
-/*
- * Go Blue Sparkle Wipe: the whole tree wipes from blue to maize to blue, over and over. A dense band of
- * sparkles rides the edge and a trail of sparkles flashes white and settles into the new color behind
- * it. While a color holds, the tree glitters (maize glitter on blue, white glitter on maize).
- * It can alternate direction each time or lean the edge into a wave around the tree.
- */
-struct GbWipe { uint32_t last; float tt, F, hold; uint8_t phase, idx, prev, dir; };
-
-void mode_goblue_wipe(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbWipe))) { mode_static(); return; }
-  GbWipe* st = reinterpret_cast<GbWipe*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbWipe)); st->last = strip.now; st->phase = 1; st->idx = st->prev = 1; st->hold = 9999.0f; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t c[2] = { fdOr(SEGCOLOR(0), 0xFFB800), fdOr(SEGCOLOR(1), 0x0028FF) };
-  const uint32_t spk = fdOr(SEGCOLOR(2), WHITE);
-  const float w = 0.03f + SEGMENT.custom1 / 255.0f * 0.15f;
-  const float tilt = SEGMENT.check2 ? 0.12f : 0.0f;
-  const float holdT = 0.5f + SEGMENT.custom2 / 255.0f * 9.5f;
-  const float amt = SEGMENT.intensity / 255.0f;
-
-  if (st->phase == 0) {
-    st->F += dts * (0.08f + SEGMENT.speed / 255.0f * 0.6f);
-    if (st->F > 1.0f + tilt + 3.0f * w) { st->phase = 1; st->hold = 0.0f; }
-  } else {
-    st->hold += dts;
-    if (st->hold > holdT) {
-      st->phase = 0; st->prev = st->idx; st->idx ^= 1; st->F = -tilt - 3.0f * w;
-      st->dir = SEGMENT.check1 ? st->dir ^ 1 : 0;
-    }
-  }
-  const uint32_t now = c[st->idx], old = c[st->prev];
-  const uint32_t glitC = st->idx ? c[0] : spk;                        // maize glitter on blue, white on maize
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len);
-    uint32_t col;
-    if (st->phase == 0) {
-      const float y = (st->dir ? 1.0f - h : h) + tilt * sin_approx(hwPixAng(i, h, N));
-      const float d = (y - st->F) / w;                                 // < 0 = already wiped
-      col = hwColor(hwMix(now, old, hwSmooth(d * 0.5f + 0.5f)), 0.8f);
-      const float glow = hwGauss(d * d);
-      col = color_add(col, hwColor(spk, 0.25f * glow));
-      const float trail = d < 0.0f ? expf(d * 0.5f) : 0.0f;          // sparkles settling behind the edge
-      const float s = xmTwinkle(i, tt * 2.0f, amt * (8.0f * glow + 2.0f * trail), 801);
-      if (s > 0.0f) col = color_add(col, hwColor(SEGMENT.check3 ? hwMix(now, spk, s) : hwMix(now, spk, 0.5f), s));
-    } else {
-      col = hwColor(now, 0.8f);
-      const float s = xmTwinkle(i, tt * 1.4f, 0.2f + amt * 0.8f, 803);
-      if (s > 0.0f) col = color_add(col, hwColor(glitC, s));
-    }
-    SEGMENT.setPixelColor(i, col);
-  }
-}
-static const char _data_FX_MODE_GOBLUE_WIPE[] PROGMEM = "UofM Sparkle Wipe@Wipe speed,Sparkles,Edge width,Hold time,Tree wraps,Alternate direction,Wavy edge,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=80,c2=70,c3=12,o1=1,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
-
-/*
- * Go Blue Spin Wipe: maize sweeps around the trunk like a hand on a clock, with a sparkling edge, until the
- * whole tree is maize; then blue sweeps around the same way, and so on. Twist turns the edge into a
- * spiral that winds up the tree; Two hands sweeps from both sides at once.
- */
-struct GbSpin { uint32_t last; float tt, q, hold; uint8_t phase, idx, prev; };
-
-void mode_goblue_spin(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbSpin))) { mode_static(); return; }
-  GbSpin* st = reinterpret_cast<GbSpin*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbSpin)); st->last = strip.now; st->phase = 1; st->idx = st->prev = 1; st->hold = 9999.0f; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t c[2] = { fdOr(SEGCOLOR(0), 0xFFB800), fdOr(SEGCOLOR(1), 0x0028FF) };
-  const uint32_t spk = fdOr(SEGCOLOR(2), WHITE);
-  const float hands = SEGMENT.check1 ? 2.0f : 1.0f;
-  const float twist = SEGMENT.custom1 / 255.0f * 2.0f;                // turns of spiral from bottom to top
-  const float holdT = 0.5f + SEGMENT.custom2 / 255.0f * 9.5f;
-  const float amt = SEGMENT.intensity / 255.0f;
-  const float w = 0.035f;                                              // edge width in tree heights
-
-  if (st->phase == 0) {
-    st->q += dts * (0.05f + SEGMENT.speed / 255.0f * 0.45f);
-    if (st->q > 1.15f) { st->phase = 1; st->hold = 0.0f; }
-  } else {
-    st->hold += dts;
-    if (st->hold > holdT) { st->phase = 0; st->prev = st->idx; st->idx ^= 1; st->q = 0.0f; }
-  }
-  const uint32_t now = c[st->idx], old = c[st->prev];
-  const uint32_t glitC = st->idx ? c[0] : spk;
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = hwPixAz(i, h, N);
-    uint32_t col;
-    if (st->phase == 0) {
-      const float u = xmFrac(hands * ((SEGMENT.check2 ? -az : az) - twist * h));   // 0..1 around the tree from the start line
-      const float d = (u - st->q) / hands * HW_TAU * fdRad(h) / w;               // edge distance, < 0 = swept
-      col = hwColor(hwMix(now, old, hwSmooth(d * 0.5f + 0.5f)), 0.8f);
-      const float glow = hwGauss(d * d);
-      col = color_add(col, hwColor(spk, 0.25f * glow));
-      const float trail = d < 0.0f ? expf(d * 0.3f) : 0.0f;
-      const float s = xmTwinkle(i, tt * 2.0f, amt * (8.0f * glow + 2.0f * trail), 811);
-      if (s > 0.0f) col = color_add(col, hwColor(SEGMENT.check3 ? hwMix(now, spk, s) : hwMix(now, spk, 0.5f), s));
-    } else {
-      col = hwColor(now, 0.8f);
-      const float s = xmTwinkle(i, tt * 1.4f, 0.2f + amt * 0.8f, 813);
-      if (s > 0.0f) col = color_add(col, hwColor(glitC, s));
-    }
-    SEGMENT.setPixelColor(i, col);
-  }
-}
-static const char _data_FX_MODE_GOBLUE_SPIN[] PROGMEM = "UofM Spin Wipe@Spin speed,Sparkles,Twist,Hold time,Tree wraps,Two hands,Reverse,White-hot sparkles;Maize,Blue,Sparkle;;1;sx=90,ix=200,c1=90,c2=70,c3=12,o1=0,o2=0,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
-
-/*
- * Go Blue Glitter Fill: the tree is blue. One pixel at a time flashes white and settles into maize, until
- * the whole tree has turned maize one sparkle at a time; then it fills back to blue the same way. Bottom
- * to top makes it fill up the tree like a rising tide of glitter; Finale burst sets off a shower of
- * sparks from the tip and a flash each time a color completes.
- */
-struct GbFill { uint32_t last; float tt, t; uint16_t round; uint8_t phase, idx, prev, n; FdP p[60]; };
-
-void mode_goblue_fill(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbFill))) { mode_static(); return; }
-  GbFill* st = reinterpret_cast<GbFill*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbFill)); st->last = strip.now; st->phase = 1; st->idx = st->prev = 1; st->t = 9999.0f; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t c[2] = { fdOr(SEGCOLOR(0), 0xFFB800), fdOr(SEGCOLOR(1), 0x0028FF) };
-  const uint32_t spk = fdOr(SEGCOLOR(2), WHITE);
-  const float T = 1.5f + (255 - SEGMENT.speed) / 255.0f * 12.0f;     // seconds for the whole tree to change
-  const float tw = 0.25f + SEGMENT.custom1 / 255.0f * 1.5f;           // how long each pixel's sparkle lasts
-  const float holdT = 0.5f + SEGMENT.intensity / 255.0f * 14.5f;
-  const float idle = SEGMENT.custom2 / 255.0f * 1.5f;
-
-  st->t += dts;
-  if (st->phase == 0 && st->t > T + tw) {
-    st->phase = 1; st->t = 0.0f;
-    if (SEGMENT.check3) gbBurst(st->p, st->n, 60, 0.96f, 0.0f, 60, 0.35f, 0.1f);
-  } else if (st->phase == 1 && st->t > holdT) {
-    st->phase = 0; st->t = 0.0f; st->prev = st->idx; st->idx ^= 1; st->round++;
-  }
-  const uint32_t now = c[st->idx], old = c[st->prev];
-  const uint32_t base = hwColor(now, 0.8f);
-  const uint32_t glitC = st->idx ? c[0] : spk;
-  const float flash = (st->phase == 1 && SEGMENT.check3) ? expf(-st->t * 5.0f) : 0.0f;
-
-  for (int i = 0; i < len; i++) {
-    uint32_t col = base;
-    if (st->phase == 0) {
-      const float r = hwHash2(i, st->round);
-      const float u = SEGMENT.check1 ? 0.75f * hwHeight(i, len) + 0.25f * r : r;   // when this pixel changes (0..1)
-      const float e = (st->t - u * T) / tw;
-      if (e < 0.0f) col = hwColor(old, 0.8f);
-      else if (e < 1.0f) {
-        const float gv = e < 0.15f ? e / 0.15f : 1.0f - (e - 0.15f) / 0.85f;
-        const uint32_t sp = SEGMENT.check2 ? hwMix(spk, now, hwSmooth(e)) : hwMix(now, spk, 0.5f);
-        col = hwMix(base, sp, gv);
-      }
-    } else if (idle > 0.0f) {
-      const float s = xmTwinkle(i, tt * 1.4f, idle, 821);
-      if (s > 0.0f) col = color_add(col, hwColor(glitC, s));
-    }
-    if (flash > 0.0f) col = color_add(col, hwColor(spk, 0.5f * flash));
-    SEGMENT.setPixelColor(i, col);
-  }
-  gbSparks(st->p, st->n, dts, 0.15f, len, N, c[0], spk, BLACK, 1.0f, 1.2f);
-}
-static const char _data_FX_MODE_GOBLUE_FILL[] PROGMEM = "UofM Glitter Fill@Fill speed,Hold time,Twinkle length,Idle glitter,Tree wraps,Bottom to top,White hot,Finale burst;Maize,Blue,Sparkle;;1;sx=120,ix=70,c1=90,c2=90,c3=12,o1=0,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=FFFFFF";
-
-/*
- * Go Blue Meltdown: a proud green & white tree starts melting from the tip down, dripping green as it
- * goes, until only embers are left. Then maize & blue fire roars up from the bottom, throwing sparks,
- * fills the tree and settles into a celebration with maize flames licking the bottom. Then it repeats.
- */
-struct GbMelt { uint32_t last; float tt, phT, spin; uint8_t phase, n; FdP p[90]; };
-
-// maize & blue fire for depth d below the flame front (d < 0 = above the fire)
-static uint32_t gbFire(float h, float az, float d, float tt, uint32_t maize, uint32_t blue) {
-  const float nz = hwNoise(az * 6.0f, h * 7.0f - tt * 2.5f);
-  const float tip = d * 5.0f + (nz - 0.5f) * 1.4f;                     // < 0 flame gone, 0..1 maize tongues, > 1 blue body
-  if (tip <= 0.0f) return BLACK;
-  if (tip < 1.0f) return hwColor(hwMix(WHITE, maize, 0.4f + 0.6f * tip), tip * (0.7f + 0.5f * nz));
-  return hwMix(maize, hwColor(blue, 0.9f), hwSmooth((tip - 1.0f) * 0.8f));
-}
-
-void mode_goblue_meltdown(void) {
-  const uint16_t len = SEGLEN;
-  if (len < 2 || !SEGENV.allocateData(sizeof(GbMelt))) { mode_static(); return; }
-  GbMelt* st = reinterpret_cast<GbMelt*>(SEGENV.data);
-  if (SEGENV.call == 0) { memset(st, 0, sizeof(GbMelt)); st->last = strip.now; }
-  const float dts = hwFrame(st->last, st->tt), tt = st->tt;
-  const float N = hwWraps();
-  const uint32_t maize = fdOr(SEGCOLOR(0), 0xFFB800), blue = fdOr(SEGCOLOR(1), 0x0028FF), green = fdOr(SEGCOLOR(2), 0x00A838);
-  const float meltT = 10.0f - SEGMENT.speed / 255.0f * 7.0f;           // 3..10 s to melt
-  const float holdT = 2.0f + SEGMENT.custom1 / 255.0f * 18.0f;
-  const float glit = 0.4f + SEGMENT.intensity / 255.0f * 2.2f;
-  const float durs[5] = { 3.0f, meltT, 3.5f, holdT, 1.5f };
-
-  st->phT += dts;
-  if (st->phT >= durs[st->phase]) { st->phT = 0.0f; st->phase = (st->phase + 1) % 5; }
-  st->spin += dts * 0.3f;
-  if (st->spin > 1000.0f) st->spin -= 1000.0f;
-  const uint8_t ph = st->phase;
-  const float p = hwClamp01(st->phT / durs[ph]);
-  const float melt = ph == 1 ? 1.05f - 1.12f * p : (ph == 0 || ph == 4 ? 1.2f : -0.1f);
-  const float fire = ph == 2 ? -0.15f + 1.35f * hwSmooth(p) : (ph == 3 ? 1.3f : -1.0f);
-
-  if (SEGMENT.check1 && ph == 1) {                                      // green drips
-    const int cnt = (int)(dts * (4.0f + SEGMENT.custom2 / 255.0f * 30.0f) + hwRand());
-    for (int k = 0; k < cnt; k++) gbSpark(st->p, st->n, 90, melt, hwRand() * HW_TAU, -0.02f, 0.0f, 1.5f + hwRand(), 0);
-  }
-  if (SEGMENT.check2 && ph == 2) {                                      // rising embers
-    const int cnt = (int)(dts * 40.0f + hwRand());
-    for (int k = 0; k < cnt; k++) gbSpark(st->p, st->n, 90, max(fire, 0.0f) * hwRand(), hwRand() * HW_TAU, 0.15f + 0.3f * hwRand(), (hwRand() - 0.5f) * 0.2f, 0.6f + 0.8f * hwRand(), k & 1);
-  }
-
-  for (int i = 0; i < len; i++) {
-    const float h = hwHeight(i, len), az = hwPixAz(i, h, N);
-    uint32_t proud = hwColor(green, 0.55f * (0.75f + 0.25f * hwNoise(az * 6.0f, h * 8.0f + tt * 0.2f)));
-    float g = xmTwinkle(i, tt, glit * 0.5f, 741); if (g > 0.0f) proud = color_add(proud, hwColor(WHITE, g * 0.8f));
-    uint32_t col = proud;
-    if (ph == 1) {
-      const float ml = melt + 0.03f * sin_approx(HW_TAU * 2.0f * az + tt * 1.5f) + 0.03f * hwNoise(az * 8.0f, tt);
-      const float d = ml - h;
-      if (d < 0.0f) col = hwColor(green, 0.03f + 0.02f * hwNoise(i * 0.3f, tt * 2.0f));   // melted: embers
-      else {
-        col = hwColor(proud, 0.6f + 0.4f * (1.0f - p));
-        const float edge = hwGauss((d / 0.03f) * (d / 0.03f));
-        if (edge > 0.01f) col = color_add(col, hwColor(green, 0.7f * edge));
-      }
-    } else if (ph == 2 || ph == 3) {
-      uint32_t ember = hwColor(green, 0.03f * (1.0f - p));
-      if (ph == 3) {
-        ember = gbVictory(i, h, az, tt, st->spin, glit, maize, blue);
-        if (SEGMENT.check3) { const uint32_t f = gbFire(h, az, 0.32f + 0.04f * sin_approx(tt * 1.3f + az * HW_TAU) - h, tt, maize, blue); if (f != BLACK) ember = f; }
-        if (st->phT < 1.0f) ember = hwMix(gbFire(h, az, 1.3f - h, tt, maize, blue), ember, st->phT);
-      } else {
-        const uint32_t f = gbFire(h, az, fire - h, tt, maize, blue);
-        if (f != BLACK) ember = f;
-      }
-      col = ember;
-    } else if (ph == 4) {
-      uint32_t v = gbVictory(i, h, az, tt, st->spin, glit, maize, blue);
-      if (SEGMENT.check3) { const uint32_t f = gbFire(h, az, 0.32f - h, tt, maize, blue); if (f != BLACK) v = f; }
-      col = hwMix(v, proud, hwSmooth(p));
-    }
-    SEGMENT.setPixelColor(i, col);
-  }
-  if (ph == 3) hwBlob(len, N, 0.985f, 0.0f, 0.03f, 0.2f, maize, 0.7f + 0.5f * fabsf(sin_approx(tt * 4.0f)));
-  gbSparks(st->p, st->n, dts, ph == 1 ? 0.12f : -0.05f, len, N, ph == 1 ? green : maize, WHITE, BLACK, ph == 1 ? 1.5f : 1.0f, 1.2f);
-}
-static const char _data_FX_MODE_GOBLUE_MELTDOWN[] PROGMEM = "UofM Meltdown@Melt speed,Glitter,Celebration time,Drips,Tree wraps,Green drips,Rising embers,Victory flames;Maize,Blue,Green;;1;sx=110,ix=110,c1=90,c2=120,c3=12,o1=1,o2=1,o3=1,k0=FFB800,k1=0028FF,k2=00A838";
-// AI: end
 
 void WS2812FX::setupEffectData() {
   // Solid must be first! (assuming vector is empty upon call to setup)
@@ -14667,28 +14356,24 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_3D_LIGHTHOUSE, &mode_3d_lighthouse, _data_FX_MODE_3D_LIGHTHOUSE);
   addEffect(FX_MODE_3D_STARBURST, &mode_3d_starburst, _data_FX_MODE_3D_STARBURST);
   addEffect(FX_MODE_3D_AURORA_CLOUDS, &mode_3d_aurora_clouds, _data_FX_MODE_3D_AURORA_CLOUDS);
-  addEffect(FX_MODE_3D_UOFM_VICTORY_BURSTS, &mode_3d_uofm_victory_bursts, _data_FX_MODE_3D_UOFM_VICTORY_BURSTS);
-  addEffect(FX_MODE_3D_UOFM_BACK_RUSH, &mode_3d_uofm_back_rush, _data_FX_MODE_3D_UOFM_BACK_RUSH);
-  addEffect(FX_MODE_3D_UOFM_GLITTER_BREATH, &mode_3d_uofm_glitter_breath, _data_FX_MODE_3D_UOFM_GLITTER_BREATH);
-  addEffect(FX_MODE_3D_UOFM_PLASMA, &mode_3d_uofm_plasma, _data_FX_MODE_3D_UOFM_PLASMA);
-  addEffect(FX_MODE_3D_UOFM_OMBRE_GLITTER, &mode_3d_uofm_ombre_glitter, _data_FX_MODE_3D_UOFM_OMBRE_GLITTER);
   addEffect(FX_MODE_FRZ_FROST_BLOOM, &mode_frz_frost_bloom, _data_FX_MODE_FRZ_FROST_BLOOM);
   addEffect(FX_MODE_FRZ_ICE_PALACE, &mode_frz_ice_palace, _data_FX_MODE_FRZ_ICE_PALACE);
   addEffect(FX_MODE_FRZ_NORTHERN_LIGHTS, &mode_frz_northern_lights, _data_FX_MODE_FRZ_NORTHERN_LIGHTS);
   addEffect(FX_MODE_FRZ_SNOWFLAKE_BURST, &mode_frz_snowflake_burst, _data_FX_MODE_FRZ_SNOWFLAKE_BURST);
   addEffect(FX_MODE_FRZ_ICE_STAIRCASE, &mode_frz_ice_staircase, _data_FX_MODE_FRZ_ICE_STAIRCASE);
+  addEffect(FX_MODE_3D_CHRISTMAS_VINTAGE_BULBS, &mode_3d_christmas_vintage_bulbs, _data_FX_MODE_3D_CHRISTMAS_VINTAGE_BULBS);
+  addEffect(FX_MODE_3D_CHRISTMAS_CANDLE_BREEZE, &mode_3d_christmas_candle_breeze, _data_FX_MODE_3D_CHRISTMAS_CANDLE_BREEZE);
+  addEffect(FX_MODE_3D_CHRISTMAS_ORNAMENT_BLOOM, &mode_3d_christmas_ornament_bloom, _data_FX_MODE_3D_CHRISTMAS_ORNAMENT_BLOOM);
+  addEffect(FX_MODE_3D_CHRISTMAS_KALEIDOSCOPE, &mode_3d_christmas_crystal_kaleidoscope, _data_FX_MODE_3D_CHRISTMAS_KALEIDOSCOPE);
+  addEffect(FX_MODE_3D_CHRISTMAS_SHOOTING_STARS, &mode_3d_christmas_shooting_stars, _data_FX_MODE_3D_CHRISTMAS_SHOOTING_STARS);
+  addEffect(FX_MODE_3D_CHRISTMAS_PRESENT_PILE, &mode_3d_christmas_present_pile, _data_FX_MODE_3D_CHRISTMAS_PRESENT_PILE);
+  addEffect(FX_MODE_3D_CHRISTMAS_SNOW_FILL, &mode_3d_christmas_snow_fill, _data_FX_MODE_3D_CHRISTMAS_SNOW_FILL);
   addEffect(FX_MODE_3D_CHRISTMAS_MAGIC_WAND, &mode_3d_christmas_magic_wand, _data_FX_MODE_3D_CHRISTMAS_MAGIC_WAND);
   addEffect(FX_MODE_3D_CHRISTMAS_BACK_GLOW, &mode_3d_christmas_back_glow, _data_FX_MODE_3D_CHRISTMAS_BACK_GLOW);
   addEffect(FX_MODE_3D_CHRISTMAS_NORTH_STAR, &mode_3d_christmas_north_star, _data_FX_MODE_3D_CHRISTMAS_NORTH_STAR);
   addEffect(FX_MODE_3D_CHRISTMAS_SUGARPLUM, &mode_3d_christmas_sugarplum, _data_FX_MODE_3D_CHRISTMAS_SUGARPLUM);
   addEffect(FX_MODE_3D_CHRISTMAS_HEARTH, &mode_3d_christmas_hearth, _data_FX_MODE_3D_CHRISTMAS_HEARTH);
   // AI: end
-  addEffect(FX_MODE_GOBLUE_TAKEOVER, &mode_goblue_takeover, _data_FX_MODE_GOBLUE_TAKEOVER);
-  addEffect(FX_MODE_GOBLUE_MARCH, &mode_goblue_march, _data_FX_MODE_GOBLUE_MARCH);
-  addEffect(FX_MODE_GOBLUE_WIPE, &mode_goblue_wipe, _data_FX_MODE_GOBLUE_WIPE);
-  addEffect(FX_MODE_GOBLUE_SPIN, &mode_goblue_spin, _data_FX_MODE_GOBLUE_SPIN);
-  addEffect(FX_MODE_GOBLUE_FILL, &mode_goblue_fill, _data_FX_MODE_GOBLUE_FILL);
-  addEffect(FX_MODE_GOBLUE_MELTDOWN, &mode_goblue_meltdown, _data_FX_MODE_GOBLUE_MELTDOWN);
 
   // --- 1D non-audio effects ---
   addEffect(FX_MODE_BLINK, &mode_blink, _data_FX_MODE_BLINK);

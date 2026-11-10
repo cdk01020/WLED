@@ -284,13 +284,7 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_XMAS_SNOWGLOBE            131  // was Matripix (sound reactive, removed)
 #define FX_MODE_XMAS_AURORA               132  // was Gravimeter (sound reactive, removed)
 #define FX_MODE_XMAS_TINSEL               133  // was Plasmoid (sound reactive, removed)
-// 134-139 reused on this branch for the Go Blue effects
-#define FX_MODE_GOBLUE_TAKEOVER        134  // was Puddles (sound reactive, removed)
-#define FX_MODE_GOBLUE_WIPE            135  // was Midnoise (sound reactive, removed)
-#define FX_MODE_GOBLUE_SPIN            136  // was Noisemeter (sound reactive, removed)
-#define FX_MODE_GOBLUE_MARCH           137  // was Freqwave (sound reactive, removed)
-#define FX_MODE_GOBLUE_FILL            138  // was Freqmatrix (sound reactive, removed)
-#define FX_MODE_GOBLUE_MELTDOWN        139  // was GEQ (sound reactive, removed)
+// 134-139 reused on this branch for the second set of 3D Christmas effects
 #define FX_MODE_WATERFALL              140
 #define FX_MODE_FREQPIXELS             141
 #define FX_MODE_BINMAP                 142
@@ -408,16 +402,19 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_LIGHTHOUSE                142
 #define FX_MODE_3D_STARBURST                 143
 #define FX_MODE_3D_AURORA_CLOUDS             144
-#define FX_MODE_3D_UOFM_VICTORY_BURSTS       145
-#define FX_MODE_3D_UOFM_BACK_RUSH            148
-#define FX_MODE_3D_UOFM_GLITTER_BREATH       160  // was Funky Plank (sound reactive, removed)
-#define FX_MODE_3D_UOFM_PLASMA               163  // was Blurz (sound reactive, removed)
-#define FX_MODE_3D_UOFM_OMBRE_GLITTER        165  // was Waverly (sound reactive, removed)
 #define FX_MODE_3D_CHRISTMAS_MAGIC_WAND      155
 #define FX_MODE_3D_CHRISTMAS_BACK_GLOW       156
 #define FX_MODE_3D_CHRISTMAS_NORTH_STAR      157
 #define FX_MODE_3D_CHRISTMAS_SUGARPLUM       158
 #define FX_MODE_3D_CHRISTMAS_HEARTH          159
+// second Christmas set, in slots freed by removing the Michigan effects
+#define FX_MODE_3D_CHRISTMAS_VINTAGE_BULBS           134
+#define FX_MODE_3D_CHRISTMAS_CANDLE_BREEZE           135
+#define FX_MODE_3D_CHRISTMAS_ORNAMENT_BLOOM          136
+#define FX_MODE_3D_CHRISTMAS_KALEIDOSCOPE            137
+#define FX_MODE_3D_CHRISTMAS_SHOOTING_STARS          138
+#define FX_MODE_3D_CHRISTMAS_PRESENT_PILE            139
+#define FX_MODE_3D_CHRISTMAS_SNOW_FILL               145
 // Frozen effects
 #define FX_MODE_FRZ_FROST_BLOOM              169  // was a removed sound-reactive effect
 #define FX_MODE_FRZ_ICE_PALACE               170  // was a removed sound-reactive effect
