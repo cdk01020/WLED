@@ -13643,6 +13643,7 @@ static const char _data_FX_MODE_3D_TILTED_SWEEP[] PROGMEM = "3D Tilted Sweep@!,T
 // Colors: 1 = beam, 2 = tower (white), 3 = sky. Sliders: Light size (height of the glowing lantern
 // and width of the beam), Top size (the whole lantern head), Lattice thickness.
 // Checkbox: Blue sky (light the gaps in the lattice blue; off = only the lighthouse lights up).
+// Checkbox: Twinkle - the lattice tower breathes with a slow, calm twinkle, each pixel on its own rhythm.
 // Checkbox: Fitzgerald - every few minutes the beam stops and the tower dims for a memorial to the
 // SS Edmund Fitzgerald (lost off Whitefish Point, Nov 10 1975): the lantern tolls like the ship's bell
 // 29 times, one for each of the crew, each toll rippling down the tower in bronze, then a 30th white
@@ -13706,6 +13707,12 @@ void mode_3d_lighthouse(void) {
       if (fminf(fabsf(u - v), fabsf(u - (1.0f - v))) * fminf(arcW, tierH) < lw * 0.7f) c = t3Mul(white, 0.9f); // X braces
       if (fminf(v, 1.0f - v) * tierH < lw * 0.8f && ty > 0.04f) c = white;                                     // ring braces
       if (fminf(q, HALF_PI - q) * r < lw * 1.2f) c = white;                                                     // legs
+      if (SEGMENT.check3 && (c.r + c.g + c.b) > 1.0f) {
+        // slow, calm twinkle: each pixel softly breathes on its own 8-20 second rhythm
+        const float h1 = t3Hash((uint32_t)p.i * 747796405U + 11U), h2 = t3Hash((uint32_t)p.i * 2891336453U + 5U);
+        const float tw = 0.5f + 0.5f * sin_approx(T * (0.20f + 0.30f * h2) + h1 * T3_TAU);
+        c = t3Mul(c, 0.55f + 0.45f * tw * tw);
+      }
     } else {
       const float h = (p.y - headBot) / (1.0f - headBot); // 0..1 up the lantern head
       if      (h < hFlare) c = t3Mul(white, 0.8f);         // flared underside of the gallery
@@ -13733,7 +13740,7 @@ void mode_3d_lighthouse(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Light size,Top size,Lattice,Blue sky,Fitzgerald;Beam,Tower,Sky;;1;sx=128,ix=110,c1=80,c2=110,c3=16,o1=0,o2=0";
+static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Light size,Top size,Lattice,Blue sky,Fitzgerald,Twinkle;Beam,Tower,Sky;;1;sx=128,ix=110,c1=80,c2=110,c3=16,o1=0,o2=0,o3=1";
 
 // --- 3D Starburst: rings of color burst outward from a random spot inside the tree ---
 void mode_3d_starburst(void) {
