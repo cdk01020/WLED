@@ -13638,7 +13638,8 @@ static const char _data_FX_MODE_3D_TILTED_SWEEP[] PROGMEM = "3D Tilted Sweep@!,T
 // --- 3D Lighthouse: blue water at the base, a red tower, and a spinning lamp at the top ---
 // Bottom band = rolling blue water with foam glints, middle = solid red tower,
 // top band = the lamp room where a bright beam circles the trunk with a fading trail.
-// Colors: 1 = beam, 2 = tower, 3 = water. Sliders: Water level and Light size set the band heights.
+// Colors: 1 = beam, 2 = tower, 3 = water. Sliders: Water level and Light size set the band heights,
+// Stripes sets how many white bands are painted on the red tower (0 = solid red).
 void mode_3d_lighthouse(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
   const T3C beamC  = t3C(t3Or(SEGCOLOR(0), 0xFFE6B4));   // warm white lamp
@@ -13648,6 +13649,9 @@ void mode_3d_lighthouse(void) {
   const float lampBot  = 1.0f - (0.08f + SEGMENT.custom2 / 255.0f * 0.32f); // top 8%..40%
   const float beam = fmodf(T * 1.4f, T3_TAU), trail = 0.6f + SEGMENT.intensity / 255.0f * 3.0f;
   const T3C lampBase = t3Mul(beamC, 0.10f);              // dim glow of the lamp room between sweeps
+  const int stripes = (SEGMENT.custom3 * 8 + 15) / 31;   // Stripes slider 0..31 -> 0..8 white bands
+  const float bandScale = (2 * stripes + 1) / fmaxf(lampBot - waterTop, 0.05f); // bands per unit of height
+  const T3C stripeC = { 210, 210, 210 };                 // slightly softer than the beam so the lamp stands out
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
@@ -13661,7 +13665,11 @@ void mode_3d_lighthouse(void) {
       if (t3Sparkle(p, T, nearTop ? 0.10f : 0.02f)) c = T3C{200, 230, 255};
       t3Set(i, c);
     } else if (p.y < lampBot) {
-      t3Set(i, tower);
+      // classic lighthouse paint: red and white bands, red at the bottom and top of the tower
+      if (stripes > 0) {
+        const int band = (int)((p.y - waterTop) * bandScale);
+        t3Set(i, (band & 1) ? stripeC : tower);
+      } else t3Set(i, tower);
     } else {
       float diff = fmodf(beam - p.a, T3_TAU); if (diff < 0.0f) diff += T3_TAU;
       if (diff < 0.15f) { t3Set(i, T3_WHITE); continue; } // hot center of the beam
@@ -13670,7 +13678,7 @@ void mode_3d_lighthouse(void) {
     }
   }
 }
-static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Water level,Light size;Beam,Tower,Water;;1;sx=128,ix=110,c1=110,c2=96";
+static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Water level,Light size,Stripes;Beam,Tower,Water;;1;sx=128,ix=110,c1=110,c2=96,c3=12";
 
 // --- 3D Starburst: rings of color burst outward from a random spot inside the tree ---
 void mode_3d_starburst(void) {
