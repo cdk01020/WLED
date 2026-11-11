@@ -13658,11 +13658,11 @@ void mode_3d_lighthouse(void) {
   const float lw      = 0.006f + SEGMENT.custom3 / 31.0f * 0.02f;        // lattice half-thickness (tree heights)
   const T3C   skyC    = SEGMENT.check1 ? t3Mul(sky, 0.75f) : T3_BLACK;
   // lantern head layout: band weights, normalized so Light size grows the lantern and the rest make room
-  const float wLamp = 0.10f + SEGMENT.custom1 / 255.0f * 0.50f;
+  const float ls = SEGMENT.custom1 / 255.0f, wLamp = 0.10f + 2.9f * ls * ls; // lantern up to ~80% of the head
   const float wSum  = 0.08f + 0.08f + 0.20f + 0.07f + wLamp + 0.24f + 0.08f;
   const float hFlare = 0.08f / wSum, hGal = hFlare + 0.08f / wSum, hWatch = hGal + 0.20f / wSum;
   const float hGal2 = hWatch + 0.07f / wSum, hLamp = hGal2 + wLamp / wSum, hDome = hLamp + 0.24f / wSum;
-  const float core = 0.08f + wLamp * 0.4f;              // half-width of the hot beam center, radians
+  const float core = 0.08f + ls * 0.55f;                // half-width of the hot beam center, radians
   const float beam = fmodf(T * 1.4f, T3_TAU), trail = 0.6f + SEGMENT.intensity / 255.0f * 3.0f;
   const float latH = fmaxf(headBot - sandTop, 0.05f), tierH = latH / 3.0f;
   const float HALF_PI = T3_TAU * 0.25f, PI_F = T3_TAU * 0.5f;
@@ -13733,7 +13733,7 @@ void mode_3d_lighthouse(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Light size,Top size,Lattice,Blue sky,Fitzgerald;Beam,Tower,Sky;;1;sx=128,ix=110,c1=96,c2=110,c3=16,o1=0,o2=0";
+static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Light size,Top size,Lattice,Blue sky,Fitzgerald;Beam,Tower,Sky;;1;sx=128,ix=110,c1=80,c2=110,c3=16,o1=0,o2=0";
 
 // --- 3D Starburst: rings of color burst outward from a random spot inside the tree ---
 void mode_3d_starburst(void) {
