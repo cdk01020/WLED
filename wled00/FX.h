@@ -421,8 +421,11 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_FRZ_NORTHERN_LIGHTS          171  // was a removed sound-reactive effect
 #define FX_MODE_FRZ_SNOWFLAKE_BURST          247  // new slot past the old effect list
 #define FX_MODE_FRZ_ICE_STAIRCASE            248  // new slot past the old effect list
+// USA effects (Veterans Day, Memorial Day, Fourth of July)
+#define FX_MODE_USA_WAVING_FLAG              249
+#define FX_MODE_USA_HALO_DROP                250
 // AI: end
-#define MODE_COUNT                     249
+#define MODE_COUNT                     251
 
 
 #define TRANSITION_FADE            0x00  // universal
