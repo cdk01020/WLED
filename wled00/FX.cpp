@@ -13666,7 +13666,7 @@ void mode_3d_lighthouse(void) {
   const float core = 0.08f + ls * 0.55f;                // half-width of the hot beam center, radians
   const float beam = fmodf(T * 1.4f, T3_TAU), trail = 0.6f + SEGMENT.intensity / 255.0f * 3.0f;
   const float latH = fmaxf(headBot - sandTop, 0.05f), tierH = latH / 3.0f;
-  const float HALF_PI = T3_TAU * 0.25f, PI_F = T3_TAU * 0.5f;
+  const float LH_QTR = T3_TAU * 0.25f, LH_HALF = T3_TAU * 0.5f;
   // Fitzgerald memorial timing (effect-time units; Speed slider scales it)
   constexpr float FZ_NORMAL = 45.0f, FZ_LEAD = 3.0f, FZ_GAP = 3.5f, FZ_TAIL = 5.0f;
   constexpr float FZ_LEN = FZ_LEAD + 30.0f * FZ_GAP + FZ_TAIL;
@@ -13697,16 +13697,16 @@ void mode_3d_lighthouse(void) {
       const float ty = (p.y - sandTop) / latH;           // 0..1 up the lattice
       c = skyC;
       // center column, facing the street (front) and the back
-      float dF = fabsf(fmodf(p.a - HALF_PI + PI_F + T3_TAU, T3_TAU) - PI_F);
-      float dB = fabsf(fmodf(p.a - 3.0f * HALF_PI + PI_F + T3_TAU, T3_TAU) - PI_F);
+      float dF = fabsf(fmodf(p.a - LH_QTR + LH_HALF + T3_TAU, T3_TAU) - LH_HALF);
+      float dB = fabsf(fmodf(p.a - 3.0f * LH_QTR + LH_HALF + T3_TAU, T3_TAU) - LH_HALF);
       if (fminf(dF, dB) * r < 0.035f) c = t3Mul(white, 0.75f * tex);
       // panel between two legs: legs sit at 45/135/225/315 degrees
-      const float q = fmodf(p.a - HALF_PI * 0.5f + T3_TAU, HALF_PI), u = q / HALF_PI;
-      const float arcW = r * HALF_PI;
+      const float q = fmodf(p.a - LH_QTR * 0.5f + T3_TAU, LH_QTR), u = q / LH_QTR;
+      const float arcW = r * LH_QTR;
       const float tv = ty * 3.0f, v = tv - floorf(tv);
       if (fminf(fabsf(u - v), fabsf(u - (1.0f - v))) * fminf(arcW, tierH) < lw * 0.7f) c = t3Mul(white, 0.9f); // X braces
       if (fminf(v, 1.0f - v) * tierH < lw * 0.8f && ty > 0.04f) c = white;                                     // ring braces
-      if (fminf(q, HALF_PI - q) * r < lw * 1.2f) c = white;                                                     // legs
+      if (fminf(q, LH_QTR - q) * r < lw * 1.2f) c = white;                                                     // legs
       if (SEGMENT.check3 && (c.r + c.g + c.b) > 1.0f) {
         // slow, calm twinkle: each pixel softly breathes on its own 8-20 second rhythm
         const float h1 = t3Hash((uint32_t)p.i * 747796405U + 11U), h2 = t3Hash((uint32_t)p.i * 2891336453U + 5U);
