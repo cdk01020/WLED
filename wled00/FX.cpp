@@ -13635,50 +13635,67 @@ void mode_3d_tilted_sweep(void) {
 }
 static const char _data_FX_MODE_3D_TILTED_SWEEP[] PROGMEM = "3D Tilted Sweep@!,Tilt;;!;1;sx=128,ix=128";
 
-// --- 3D Lighthouse: blue water at the base, a red tower, and a spinning lamp at the top ---
-// Bottom band = rolling blue water with foam glints, middle = solid red tower,
-// top band = the lamp room where a bright beam circles the trunk with a fading trail.
-// Colors: 1 = beam, 2 = tower, 3 = water. Sliders: Water level and Light size set the band heights,
-// Stripes sets how many white bands are painted on the red tower (0 = solid red).
+// --- 3D Lighthouse: Split Rock style - sandstone base, tan brick tower, windows, black gallery, glowing lantern ---
+// Bottom = pale sandstone plinth with a stepped ledge, middle = tan brick tower split by a cream stone
+// ledge, with staggered dark windows on every side, then a black gallery (lights off) under the
+// lantern room, where a warm lamp glows and a bright beam circles the trunk. Thin dark cap on top.
+// Colors: 1 = beam, 2 = brick, 3 = stone. Sliders: Base height, Light size, Windows (0 = none).
+// Checkbox: Lit windows (warm glow in the windows instead of dark).
 void mode_3d_lighthouse(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
-  const T3C beamC  = t3C(t3Or(SEGCOLOR(0), 0xFFE6B4));   // warm white lamp
-  const T3C tower  = t3C(t3Or(SEGCOLOR(1), 0xE00A0A));   // lighthouse red
-  const T3C water  = t3C(t3Or(SEGCOLOR(2), 0x0A3CFF));   // ocean blue
-  const float waterTop = 0.05f + SEGMENT.custom1 / 255.0f * 0.35f;      // 5%..40% of the height
-  const float lampBot  = 1.0f - (0.08f + SEGMENT.custom2 / 255.0f * 0.32f); // top 8%..40%
+  const T3C beamC = t3C(t3Or(SEGCOLOR(0), 0xFFE6B4));   // warm white lamp
+  const T3C brick = t3C(t3Or(SEGCOLOR(1), 0xC8782D));   // tan / yellow brick
+  const T3C stone = t3C(t3Or(SEGCOLOR(2), 0xE6C391));   // pale sandstone
+  const T3C glass = { 255, 190, 70 };                    // lantern glow between sweeps
+  const float baseTop = 0.06f + SEGMENT.custom1 / 255.0f * 0.24f;       // plinth 6%..30% of the height
+  const float lampBot = 1.0f - (0.08f + SEGMENT.custom2 / 255.0f * 0.24f); // lantern = top 8%..32%
+  const float galBot  = lampBot - 0.045f;                // black gallery band under the lantern
+  const float capBot  = 1.0f - 0.025f;                   // dark roof cap
+  const float towerH  = fmaxf(galBot - baseTop, 0.05f);
+  const float ledgeY  = baseTop + towerH * 0.55f;        // cream stone ledge part way up the tower
+  const float winW    = SEGMENT.custom3 / 31.0f * 0.32f; // half-width of a window, radians around the trunk
+  const float winH    = 0.03f + SEGMENT.custom3 / 31.0f * 0.025f;
+  const bool  litWin  = SEGMENT.check1;
   const float beam = fmodf(T * 1.4f, T3_TAU), trail = 0.6f + SEGMENT.intensity / 255.0f * 3.0f;
-  const T3C lampBase = t3Mul(beamC, 0.10f);              // dim glow of the lamp room between sweeps
-  const int stripes = (SEGMENT.custom3 * 8 + 15) / 31;   // Stripes slider 0..31 -> 0..8 white bands
-  const float bandScale = (2 * stripes + 1) / fmaxf(lampBot - waterTop, 0.05f); // bands per unit of height
-  const T3C stripeC = { 210, 210, 210 };                 // slightly softer than the beam so the lamp stands out
+  // window rows (fraction up the tower, angle offset): two side windows, a center one, two up top
+  static const float rowF[3] = { 0.18f, 0.40f, 0.78f };
+  static const float rowO[3] = { 0.785398f, 0.0f, 0.785398f };
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
-    // the waterline rolls a little around the tree so it doesn't look like a flat cut
-    const float shore = waterTop + 0.025f * sin_approx(p.a * 3.0f + T * 1.5f);
-    if (p.y < shore) {
-      // swells travel around the trunk; brighter crests, darker troughs
-      const float wave = 0.55f + 0.45f * sin_approx(p.a * 4.0f - T * 2.0f + p.y * 30.0f);
-      T3C c = t3Mul(water, 0.35f + 0.65f * wave);
-      const bool nearTop = (shore - p.y) < 0.04f;           // foam where the water meets the tower
-      if (t3Sparkle(p, T, nearTop ? 0.10f : 0.02f)) c = T3C{200, 230, 255};
-      t3Set(i, c);
+    const float texture = 0.86f + 0.14f * t3Hash((uint32_t)p.i * 2654435761U + 99U); // soft stone/brick grain
+    if (p.y < baseTop) {
+      // stepped sandstone plinth: lower step a touch darker, bright lip at the top
+      const float k = (p.y > baseTop - 0.025f) ? 1.0f : (p.y < baseTop * 0.5f ? 0.72f : 0.85f);
+      t3Set(i, t3Mul(stone, k * texture));
+    } else if (p.y < galBot) {
+      if (fabsf(p.y - ledgeY) < 0.018f) { t3Set(i, t3Mul(stone, texture)); continue; } // stone ledge
+      bool win = false;
+      if (winW > 0.0f) {
+        for (int r = 0; r < 3 && !win; r++) {
+          const float wy = baseTop + towerH * rowF[r];
+          if (fabsf(p.y - wy) > winH) continue;
+          // one window on each of the four faces, angles snapped to the nearest face
+          float d = fmodf(p.a - rowO[r] + T3_TAU * 2.0f, T3_TAU * 0.25f);
+          if (d > T3_TAU * 0.125f) d -= T3_TAU * 0.25f;
+          if (fabsf(d) < winW) win = true;
+        }
+      }
+      if (win) t3Set(i, litWin ? t3Mul(glass, 0.55f + 0.1f * sin_approx(T * 3.0f + p.i)) : T3_BLACK);
+      else     t3Set(i, t3Mul(brick, texture));
     } else if (p.y < lampBot) {
-      // classic lighthouse paint: red and white bands, red at the bottom and top of the tower
-      if (stripes > 0) {
-        const int band = (int)((p.y - waterTop) * bandScale);
-        t3Set(i, (band & 1) ? stripeC : tower);
-      } else t3Set(i, tower);
+      t3Set(i, T3_BLACK);                                 // black iron gallery
+    } else if (p.y >= capBot) {
+      t3Set(i, t3Mul(glass, 0.06f));                      // dark roof, faint spill from the lamp
     } else {
       float diff = fmodf(beam - p.a, T3_TAU); if (diff < 0.0f) diff += T3_TAU;
       if (diff < 0.15f) { t3Set(i, T3_WHITE); continue; } // hot center of the beam
       float k = 1.0f - diff / trail; k = k > 0.0f ? k * k : 0.0f;
-      t3Set(i, t3Add(lampBase, t3Mul(beamC, k)));
+      t3Set(i, t3Add(t3Mul(glass, 0.28f), t3Mul(beamC, k)));
     }
   }
 }
-static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Water level,Light size,Stripes;Beam,Tower,Water;;1;sx=128,ix=110,c1=110,c2=96,c3=12";
+static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Base height,Light size,Windows,Lit windows;Beam,Brick,Stone;;1;sx=128,ix=110,c1=96,c2=96,c3=16,o1=0";
 
 // --- 3D Starburst: rings of color burst outward from a random spot inside the tree ---
 void mode_3d_starburst(void) {
