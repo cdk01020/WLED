@@ -13635,67 +13635,98 @@ void mode_3d_tilted_sweep(void) {
 }
 static const char _data_FX_MODE_3D_TILTED_SWEEP[] PROGMEM = "3D Tilted Sweep@!,Tilt;;!;1;sx=128,ix=128";
 
-// --- 3D Lighthouse: Split Rock style - sandstone base, tan brick tower, windows, black gallery, glowing lantern ---
-// Bottom = pale sandstone plinth with a stepped ledge, middle = tan brick tower split by a cream stone
-// ledge, with staggered dark windows on every side, then a black gallery (lights off) under the
-// lantern room, where a warm lamp glows and a bright beam circles the trunk. Thin dark cap on top.
-// Colors: 1 = beam, 2 = brick, 3 = stone. Sliders: Base height, Light size, Windows (0 = none).
-// Checkbox: Lit windows (warm glow in the windows instead of dark).
+// --- 3D Lighthouse: Whitefish Point style - white steel lattice tower with a red-domed lantern ---
+// Lower part = white skeletal tower (from the base of the tree):
+// four legs (between the faces), X cross-braces and ring braces in three tiers, and the white
+// center column facing the street and the back. Top = white flare, black gallery, white watch room,
+// black upper gallery, glowing lantern with a circling beam, red dome and red ball on top.
+// Colors: 1 = beam, 2 = tower (white), 3 = sky. Sliders: Top size, Lattice thickness.
+// Checkbox: Blue sky (light the gaps in the lattice blue; off = only the lighthouse lights up).
+// Checkbox: Fitzgerald - every few minutes the beam stops and the tower dims for a memorial to the
+// SS Edmund Fitzgerald (lost off Whitefish Point, Nov 10 1975): the lantern tolls like the ship's bell
+// 29 times, one for each of the crew, each toll rippling down the tower in bronze, then a 30th white
+// toll for all sailors lost on the Great Lakes, before the light comes back.
 void mode_3d_lighthouse(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
   const T3C beamC = t3C(t3Or(SEGCOLOR(0), 0xFFE6B4));   // warm white lamp
-  const T3C brick = t3C(t3Or(SEGCOLOR(1), 0xC8782D));   // tan / yellow brick
-  const T3C stone = t3C(t3Or(SEGCOLOR(2), 0xE6C391));   // pale sandstone
-  const T3C glass = { 255, 190, 70 };                    // lantern glow between sweeps
-  const float baseTop = 0.06f + SEGMENT.custom1 / 255.0f * 0.24f;       // plinth 6%..30% of the height
-  const float lampBot = 1.0f - (0.08f + SEGMENT.custom2 / 255.0f * 0.24f); // lantern = top 8%..32%
-  const float galBot  = lampBot - 0.045f;                // black gallery band under the lantern
-  const float capBot  = 1.0f - 0.025f;                   // dark roof cap
-  const float towerH  = fmaxf(galBot - baseTop, 0.05f);
-  const float ledgeY  = baseTop + towerH * 0.55f;        // cream stone ledge part way up the tower
-  const float winW    = SEGMENT.custom3 / 31.0f * 0.32f; // half-width of a window, radians around the trunk
-  const float winH    = 0.03f + SEGMENT.custom3 / 31.0f * 0.025f;
-  const bool  litWin  = SEGMENT.check1;
+  const T3C white = t3C(t3Or(SEGCOLOR(1), 0xEBEBEB));   // white steel
+  const T3C sky   = t3C(t3Or(SEGCOLOR(2), 0x0A2A80));   // daytime blue
+  const T3C red = { 230, 12, 8 }, glass = { 255, 190, 70 };
+  const float sandTop = 0.0f;                           // tower starts at the base of the tree
+  const float headBot = 1.0f - (0.24f + SEGMENT.custom2 / 255.0f * 0.24f); // lantern head = top 24%..48%
+  const float lw      = 0.006f + SEGMENT.custom3 / 31.0f * 0.02f;        // lattice half-thickness (tree heights)
+  const T3C   skyC    = SEGMENT.check1 ? t3Mul(sky, 0.75f) : T3_BLACK;
   const float beam = fmodf(T * 1.4f, T3_TAU), trail = 0.6f + SEGMENT.intensity / 255.0f * 3.0f;
-  // window rows (fraction up the tower, angle offset): two side windows, a center one, two up top
-  static const float rowF[3] = { 0.18f, 0.40f, 0.78f };
-  static const float rowO[3] = { 0.785398f, 0.0f, 0.785398f };
+  const float latH = fmaxf(headBot - sandTop, 0.05f), tierH = latH / 3.0f;
+  const float HALF_PI = T3_TAU * 0.25f, PI_F = T3_TAU * 0.5f;
+  // Fitzgerald memorial timing (effect-time units; Speed slider scales it)
+  constexpr float FZ_NORMAL = 45.0f, FZ_LEAD = 3.0f, FZ_GAP = 3.5f, FZ_TAIL = 5.0f;
+  constexpr float FZ_LEN = FZ_LEAD + 30.0f * FZ_GAP + FZ_TAIL;
+  float fzMix = 0.0f, fzEnv = 0.0f, fzRing = -1.0f; T3C fzBell = { 255, 140, 40 }; // bronze
+  if (SEGMENT.check2) {
+    const float m = fmodf(T, FZ_NORMAL + FZ_LEN) - FZ_NORMAL;   // < 0 = normal lighthouse
+    if (m >= 0.0f) {
+      fzMix = fminf(1.0f, fminf(m / FZ_LEAD, (FZ_LEN - m) / FZ_TAIL));
+      const float tm = m - FZ_LEAD;
+      if (tm >= 0.0f) {
+        const int k = (int)(tm / FZ_GAP);
+        if (k < 30) {
+          const float dt = tm - k * FZ_GAP;
+          fzEnv = fmaxf(0.0f, 1.0f - dt / 2.4f); fzEnv *= fzEnv;
+          fzRing = headBot - dt * 0.45f;                       // the toll travels down the tower
+          if (k == 29) fzBell = { 255, 245, 225 };             // 30th toll: all sailors lost on the Lakes
+        }
+      }
+    }
+  }
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
-    const float texture = 0.86f + 0.14f * t3Hash((uint32_t)p.i * 2654435761U + 99U); // soft stone/brick grain
-    if (p.y < baseTop) {
-      // stepped sandstone plinth: lower step a touch darker, bright lip at the top
-      const float k = (p.y > baseTop - 0.025f) ? 1.0f : (p.y < baseTop * 0.5f ? 0.72f : 0.85f);
-      t3Set(i, t3Mul(stone, k * texture));
-    } else if (p.y < galBot) {
-      if (fabsf(p.y - ledgeY) < 0.018f) { t3Set(i, t3Mul(stone, texture)); continue; } // stone ledge
-      bool win = false;
-      if (winW > 0.0f) {
-        for (int r = 0; r < 3 && !win; r++) {
-          const float wy = baseTop + towerH * rowF[r];
-          if (fabsf(p.y - wy) > winH) continue;
-          // one window on each of the four faces, angles snapped to the nearest face
-          float d = fmodf(p.a - rowO[r] + T3_TAU * 2.0f, T3_TAU * 0.25f);
-          if (d > T3_TAU * 0.125f) d -= T3_TAU * 0.25f;
-          if (fabsf(d) < winW) win = true;
-        }
-      }
-      if (win) t3Set(i, litWin ? t3Mul(glass, 0.55f + 0.1f * sin_approx(T * 3.0f + p.i)) : T3_BLACK);
-      else     t3Set(i, t3Mul(brick, texture));
-    } else if (p.y < lampBot) {
-      t3Set(i, T3_BLACK);                                 // black iron gallery
-    } else if (p.y >= capBot) {
-      t3Set(i, t3Mul(glass, 0.06f));                      // dark roof, faint spill from the lamp
+    const float tex = 0.86f + 0.14f * t3Hash((uint32_t)p.i * 2654435761U + 99U);
+    T3C c; bool lamp = false;
+    if (p.y < headBot) {
+      const float r = fmaxf(t3ConeR(p.y), 0.04f);
+      const float ty = (p.y - sandTop) / latH;           // 0..1 up the lattice
+      c = skyC;
+      // center column, facing the street (front) and the back
+      float dF = fabsf(fmodf(p.a - HALF_PI + PI_F + T3_TAU, T3_TAU) - PI_F);
+      float dB = fabsf(fmodf(p.a - 3.0f * HALF_PI + PI_F + T3_TAU, T3_TAU) - PI_F);
+      if (fminf(dF, dB) * r < 0.035f) c = t3Mul(white, 0.75f * tex);
+      // panel between two legs: legs sit at 45/135/225/315 degrees
+      const float q = fmodf(p.a - HALF_PI * 0.5f + T3_TAU, HALF_PI), u = q / HALF_PI;
+      const float arcW = r * HALF_PI;
+      const float tv = ty * 3.0f, v = tv - floorf(tv);
+      if (fminf(fabsf(u - v), fabsf(u - (1.0f - v))) * fminf(arcW, tierH) < lw * 0.7f) c = t3Mul(white, 0.9f); // X braces
+      if (fminf(v, 1.0f - v) * tierH < lw * 0.8f && ty > 0.04f) c = white;                                     // ring braces
+      if (fminf(q, HALF_PI - q) * r < lw * 1.2f) c = white;                                                     // legs
     } else {
-      float diff = fmodf(beam - p.a, T3_TAU); if (diff < 0.0f) diff += T3_TAU;
-      if (diff < 0.15f) { t3Set(i, T3_WHITE); continue; } // hot center of the beam
-      float k = 1.0f - diff / trail; k = k > 0.0f ? k * k : 0.0f;
-      t3Set(i, t3Add(t3Mul(glass, 0.28f), t3Mul(beamC, k)));
+      const float h = (p.y - headBot) / (1.0f - headBot); // 0..1 up the lantern head
+      if      (h < 0.08f) c = t3Mul(white, 0.8f);         // flared underside of the gallery
+      else if (h < 0.16f) c = T3_BLACK;                   // black lower gallery
+      else if (h < 0.36f) c = t3Mul(white, 0.85f * tex);  // white watch room
+      else if (h < 0.43f) c = T3_BLACK;                   // black upper gallery
+      else if (h < 0.68f) {                               // lantern glass with the circling beam
+        lamp = true;
+        float diff = fmodf(beam - p.a, T3_TAU); if (diff < 0.0f) diff += T3_TAU;
+        if (diff < 0.15f) c = T3_WHITE;
+        else { float k = 1.0f - diff / trail; k = k > 0.0f ? k * k : 0.0f; c = t3Add(t3Mul(glass, 0.3f), t3Mul(beamC, k)); }
+      }
+      else if (h < 0.92f) c = t3Mul(red, 0.9f);           // red dome
+      else                c = red;                        // red ball on top
     }
+    if (fzMix > 0.0f) {
+      // memorial: beam stops, tower dims, the lantern tolls and each toll ripples down the tower
+      T3C m = lamp ? t3Add(t3Mul(glass, 0.08f), t3Mul(fzBell, fzEnv)) : t3Mul(c, 0.22f);
+      if (!lamp && fzRing > -0.5f) {
+        const float d = fabsf(p.y - fzRing);
+        if (d < 0.05f && (c.r + c.g + c.b) > 1.0f) m = t3Add(m, t3Mul(fzBell, fzEnv * (1.0f - d / 0.05f)));
+      }
+      c = t3Lerp(c, m, fzMix);
+    }
+    t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Base height,Light size,Windows,Lit windows;Beam,Brick,Stone;;1;sx=128,ix=110,c1=96,c2=96,c3=16,o1=0";
+static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,,Top size,Lattice,Blue sky,Fitzgerald;Beam,Tower,Sky;;1;sx=128,ix=110,c2=110,c3=16,o1=0,o2=0";
 
 // --- 3D Starburst: rings of color burst outward from a random spot inside the tree ---
 void mode_3d_starburst(void) {
