@@ -13640,7 +13640,8 @@ static const char _data_FX_MODE_3D_TILTED_SWEEP[] PROGMEM = "3D Tilted Sweep@!,T
 // four legs (between the faces), X cross-braces and ring braces in three tiers, and the white
 // center column facing the street and the back. Top = white flare, black gallery, white watch room,
 // black upper gallery, glowing lantern with a circling beam, red dome and red ball on top.
-// Colors: 1 = beam, 2 = tower (white), 3 = sky. Sliders: Top size, Lattice thickness.
+// Colors: 1 = beam, 2 = tower (white), 3 = sky. Sliders: Light size (height of the glowing lantern
+// and width of the beam), Top size (the whole lantern head), Lattice thickness.
 // Checkbox: Blue sky (light the gaps in the lattice blue; off = only the lighthouse lights up).
 // Checkbox: Fitzgerald - every few minutes the beam stops and the tower dims for a memorial to the
 // SS Edmund Fitzgerald (lost off Whitefish Point, Nov 10 1975): the lantern tolls like the ship's bell
@@ -13656,6 +13657,12 @@ void mode_3d_lighthouse(void) {
   const float headBot = 1.0f - (0.24f + SEGMENT.custom2 / 255.0f * 0.24f); // lantern head = top 24%..48%
   const float lw      = 0.006f + SEGMENT.custom3 / 31.0f * 0.02f;        // lattice half-thickness (tree heights)
   const T3C   skyC    = SEGMENT.check1 ? t3Mul(sky, 0.75f) : T3_BLACK;
+  // lantern head layout: band weights, normalized so Light size grows the lantern and the rest make room
+  const float wLamp = 0.10f + SEGMENT.custom1 / 255.0f * 0.50f;
+  const float wSum  = 0.08f + 0.08f + 0.20f + 0.07f + wLamp + 0.24f + 0.08f;
+  const float hFlare = 0.08f / wSum, hGal = hFlare + 0.08f / wSum, hWatch = hGal + 0.20f / wSum;
+  const float hGal2 = hWatch + 0.07f / wSum, hLamp = hGal2 + wLamp / wSum, hDome = hLamp + 0.24f / wSum;
+  const float core = 0.08f + wLamp * 0.4f;              // half-width of the hot beam center, radians
   const float beam = fmodf(T * 1.4f, T3_TAU), trail = 0.6f + SEGMENT.intensity / 255.0f * 3.0f;
   const float latH = fmaxf(headBot - sandTop, 0.05f), tierH = latH / 3.0f;
   const float HALF_PI = T3_TAU * 0.25f, PI_F = T3_TAU * 0.5f;
@@ -13701,17 +13708,17 @@ void mode_3d_lighthouse(void) {
       if (fminf(q, HALF_PI - q) * r < lw * 1.2f) c = white;                                                     // legs
     } else {
       const float h = (p.y - headBot) / (1.0f - headBot); // 0..1 up the lantern head
-      if      (h < 0.08f) c = t3Mul(white, 0.8f);         // flared underside of the gallery
-      else if (h < 0.16f) c = T3_BLACK;                   // black lower gallery
-      else if (h < 0.36f) c = t3Mul(white, 0.85f * tex);  // white watch room
-      else if (h < 0.43f) c = T3_BLACK;                   // black upper gallery
-      else if (h < 0.68f) {                               // lantern glass with the circling beam
+      if      (h < hFlare) c = t3Mul(white, 0.8f);         // flared underside of the gallery
+      else if (h < hGal) c = T3_BLACK;                    // black lower gallery
+      else if (h < hWatch) c = t3Mul(white, 0.85f * tex);  // white watch room
+      else if (h < hGal2) c = T3_BLACK;                    // black upper gallery
+      else if (h < hLamp) {                               // lantern glass with the circling beam
         lamp = true;
         float diff = fmodf(beam - p.a, T3_TAU); if (diff < 0.0f) diff += T3_TAU;
-        if (diff < 0.15f) c = T3_WHITE;
+        if (diff < core) c = T3_WHITE;
         else { float k = 1.0f - diff / trail; k = k > 0.0f ? k * k : 0.0f; c = t3Add(t3Mul(glass, 0.3f), t3Mul(beamC, k)); }
       }
-      else if (h < 0.92f) c = t3Mul(red, 0.9f);           // red dome
+      else if (h < hDome) c = t3Mul(red, 0.9f);           // red dome
       else                c = red;                        // red ball on top
     }
     if (fzMix > 0.0f) {
@@ -13726,7 +13733,7 @@ void mode_3d_lighthouse(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,,Top size,Lattice,Blue sky,Fitzgerald;Beam,Tower,Sky;;1;sx=128,ix=110,c2=110,c3=16,o1=0,o2=0";
+static const char _data_FX_MODE_3D_LIGHTHOUSE[] PROGMEM = "3D Lighthouse@!,Trail length,Light size,Top size,Lattice,Blue sky,Fitzgerald;Beam,Tower,Sky;;1;sx=128,ix=110,c1=96,c2=110,c3=16,o1=0,o2=0";
 
 // --- 3D Starburst: rings of color burst outward from a random spot inside the tree ---
 void mode_3d_starburst(void) {
