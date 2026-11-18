@@ -424,6 +424,11 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 // USA effects (Veterans Day, Memorial Day, Fourth of July)
 #define FX_MODE_USA_WAVING_FLAG              249
 #define FX_MODE_USA_HALO_DROP                250
+// 3D Wave effects, in IDs freed by the removed sound-reactive effects
+#define FX_MODE_3D_WAVE_ROLL                 148  // was a removed sound-reactive effect
+#define FX_MODE_3D_WAVE_POUR                 160  // was a removed sound-reactive effect
+#define FX_MODE_3D_WAVE_BREAKERS             163  // was a removed sound-reactive effect
+#define FX_MODE_3D_WAVE_OCEAN_SWIRL          165  // was a removed sound-reactive effect
 // AI: end
 #define MODE_COUNT                     251
 
