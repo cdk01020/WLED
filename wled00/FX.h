@@ -429,6 +429,9 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_WAVE_POUR                 160  // was a removed sound-reactive effect
 #define FX_MODE_3D_WAVE_BREAKERS             163  // was a removed sound-reactive effect
 #define FX_MODE_3D_WAVE_OCEAN_SWIRL          165  // was a removed sound-reactive effect
+// Thanksgiving effects
+#define FX_MODE_TG_FALLING_LEAVES            175  // was a removed sound-reactive effect (2D Swirl)
+#define FX_MODE_TG_GRATITUDE_GLOW            185  // was a removed sound-reactive effect (Rocktaves)
 // AI: end
 #define MODE_COUNT                     251
 
