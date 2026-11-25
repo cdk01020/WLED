@@ -14996,19 +14996,33 @@ void mode_f2x_moon_to_star(void) {
 static const char _data_FX_MODE_F2X_MOON_TO_STAR[] PROGMEM = "Fall2Xmas Moon to Star@!,Bulbs,Season length,Moon size,Star rays,Show rays;Bulb 1,Bulb 2,Bulb 3;!;1;sx=128,ix=128,c1=128,c2=128,c3=12,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
 
 // --- Fall2Xmas Cider to Candy Cane: warm cider spirals turn into a crisp candy cane spiral, poured from the top ---
+// The stripes keep the same slant all the way up: where the tree is narrow they wrap around faster,
+// using g(y) = integral of 1 / radius, so the angle on the real tree matches the Stripe angle slider.
+static float f2G[65];                                                     // g(y) at y = 0, 1/64 .. 1
+static bool f2GReady = false;
+static float f2Wrap(float y) {
+  if (!f2GReady) {
+    f2G[0] = 0.0f;
+    for (int k = 1; k <= 64; k++) f2G[k] = f2G[k - 1] + (1.0f / 64.0f) / t3ConeR((k - 0.5f) / 64.0f);
+    f2GReady = true;
+  }
+  const float f = t3Clamp(y) * 64.0f; const int k = f >= 64.0f ? 63 : (int)f;
+  return f2G[k] + (f2G[k + 1] - f2G[k]) * (f - k);
+}
 void mode_f2x_cider_candy(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
   T *= F2_TS;
   const F2S S = f2Season(T);
   const float nS = (float)(2 + (SEGMENT.intensity * 6) / 255);           // Intensity: stripes around the tree (2..8)
-  const float twist = SEGMENT.custom2 / 255.0f * 6.0f;                   // Custom 2: how much the stripes twist
+  const float ang = (15.0f + SEGMENT.custom2 / 255.0f * 60.0f) * (3.14159265f / 180.0f);   // Custom 2: stripe angle, 15..75 degrees from level
+  const float slope = cos_t(ang) / sin_t(ang);                           // 1 / tan(angle)
   const float spark = SEGMENT.custom3 / 31.0f;                           // Custom 3: sparkle
   const bool pin = SEGMENT.check1;                                       // Check 1: thin Color 3 pinstripe
   const T3C red = t3C(SEGCOLOR(0)), wht = t3C(SEGCOLOR(1)), acc = t3C(SEGCOLOR(2));
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
-    const float u = t3Frac(p.a / T3_TAU * nS + p.y * twist - T * 0.15f);
+    const float u = t3Frac((p.a + f2Wrap(p.y) * slope) / T3_TAU * nS - T * 0.15f);   // the stripes climb as they turn
     const float ls = frzSmooth(0.0f, 1.0f, (S.s * 1.4f - (1.0f - p.y) * 0.4f) * 2.5f);   // short pour edge
     const float soft = 0.5f + 0.5f * sin_t(u * T3_TAU);                  // fall: soft cider swirl
     T3C fall = t3Lerp(t3Mul(f2Fall(u * 0.5f + p.y * 0.2f + T * 0.02f), 0.55f), T3C{ 255, 205, 140 }, soft * soft * 0.35f);
@@ -15019,7 +15033,7 @@ void mode_f2x_cider_candy(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_F2X_CIDER_CANDY[] PROGMEM = "Fall2Xmas Cider to Candy Cane@!,Stripes,Season length,Twist,Sparkle,Pinstripe;Stripe 1,Stripe 2,Pinstripe;!;1;sx=128,ix=80,c1=128,c2=110,c3=14,o1=1,pal=0,k0=E00A14,k1=FFFFFF,k2=0A8C1E";
+static const char _data_FX_MODE_F2X_CIDER_CANDY[] PROGMEM = "Fall2Xmas Cider to Candy Cane@!,Stripes,Season length,Stripe angle,Sparkle,Pinstripe;Stripe 1,Stripe 2,Pinstripe;!;1;sx=128,ix=80,c1=128,c2=128,c3=14,o1=1,pal=0,k0=E00A14,k1=FFFFFF,k2=0A8C1E";
 
 // --- Fall2Xmas Tree Lighting: a spark spirals up from the base lighting each bulb, the star bursts on top, then the bulbs sparkle out back to fall ---
 // Bulbs: Intensity sets the share that are Color 3 (white); the rest are split evenly between Color 1 and Color 2.
