@@ -14895,7 +14895,10 @@ void mode_f2x_leaf_to_snow(void) {
     const float ls = frzSmooth(0.0f, 1.0f, S.s * 1.5f - (1.0f - p.y) * 0.5f);   // the top turns first
     T3C xm = F2_PINE;
     const float hb = t3Hash(p.i * 7331U + 5U);
-    if (hb < bulbs) xm = t3Mul(f2Xmas((uint32_t)(t3Hash(p.i * 3119U + 1U) * 3.0f)), 0.8f + 0.2f * sin_t(T * 0.9f + hb * 40.0f));
+    if (hb < bulbs) {                                                    // bulbs: 1 in 6 Color 3 (white), the rest split between Color 1 and 2
+      const float hc = t3Hash(p.i * 3119U + 1U);
+      xm = t3Mul(f2Xmas(hc < 1.0f / 6.0f ? 2 : (hc < 7.0f / 12.0f ? 0 : 1)), 0.8f + 0.2f * sin_t(T * 0.9f + hb * 40.0f));
+    }
     const float snowTw = frzTw(p, T, 1.5f) * (cap ? 0.25f + 0.75f * frzSmooth(0.45f, 0.9f, p.y) : 0.5f);
     xm = t3Lerp(xm, T3_WHITE, snowTw);
     T3C c = t3Lerp(f2Foliage(p, T, 0.32f), xm, ls);
@@ -14906,7 +14909,7 @@ void mode_f2x_leaf_to_snow(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_F2X_LEAF_TO_SNOW[] PROGMEM = "Fall2Xmas Leaf to Snow@!,Leaves & flakes,Season length,Bulbs,Sway,Snow cap;Bulb 1,Bulb 2,Bulb 3;!;1;sx=128,ix=128,c1=128,c2=128,c3=16,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
+static const char _data_FX_MODE_F2X_LEAF_TO_SNOW[] PROGMEM = "Fall2Xmas Leaf to Snow@!,Leaves & flakes,Season length,Bulbs,Sway,Snow cap;Bulb 1,Bulb 2,White bulbs;!;1;sx=128,ix=128,c1=128,c2=128,c3=16,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
 
 // --- Fall2Xmas Pumpkin to Ornament: glowing pumpkin lanterns pop one at a time into shiny Christmas ornaments ---
 void mode_f2x_pumpkin_ornament(void) {
