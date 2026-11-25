@@ -15013,7 +15013,7 @@ void mode_f2x_cider_candy(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
   T *= F2_TS;
   const F2S S = f2Season(T);
-  const float nS = (float)(2 + (SEGMENT.intensity * 6) / 255);           // Intensity: stripes around the tree (2..8)
+  const float nS = (float)(8 - (SEGMENT.intensity * 6) / 255);           // Intensity: stripe thickness (thin = 8 red/white pairs around, thick = 2)
   const float ang = (15.0f + SEGMENT.custom2 / 255.0f * 60.0f) * (3.14159265f / 180.0f);   // Custom 2: stripe angle, 15..75 degrees from level
   const float slope = cos_t(ang) / sin_t(ang);                           // 1 / tan(angle)
   const float spark = SEGMENT.custom3 / 31.0f;                           // Custom 3: sparkle
@@ -15033,7 +15033,7 @@ void mode_f2x_cider_candy(void) {
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_F2X_CIDER_CANDY[] PROGMEM = "Fall2Xmas Cider to Candy Cane@!,Stripes,Season length,Stripe angle,Sparkle,Pinstripe;Stripe 1,Stripe 2,Pinstripe;!;1;sx=128,ix=80,c1=128,c2=128,c3=14,o1=1,pal=0,k0=E00A14,k1=FFFFFF,k2=0A8C1E";
+static const char _data_FX_MODE_F2X_CIDER_CANDY[] PROGMEM = "Fall2Xmas Cider to Candy Cane@!,Thickness,Season length,Stripe angle,Sparkle,Pinstripe;Stripe 1,Stripe 2,Pinstripe;!;1;sx=128,ix=220,c1=128,c2=128,c3=14,o1=1,pal=0,k0=E00A14,k1=FFFFFF,k2=0A8C1E";
 
 // --- Fall2Xmas Tree Lighting: a spark spirals up from the base lighting each bulb, the star bursts on top, then the bulbs sparkle out back to fall ---
 // Bulbs: Intensity sets the share that are Color 3 (white); the rest are split evenly between Color 1 and Color 2.
