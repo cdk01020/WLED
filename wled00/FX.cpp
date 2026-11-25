@@ -15020,7 +15020,7 @@ void mode_f2x_cider_candy(void) {
 }
 static const char _data_FX_MODE_F2X_CIDER_CANDY[] PROGMEM = "Fall2Xmas Cider to Candy Cane@!,Stripes,Season length,Twist,Sparkle,Pinstripe;Stripe 1,Stripe 2,Pinstripe;!;1;sx=128,ix=80,c1=128,c2=110,c3=14,o1=1,pal=0,k0=E00A14,k1=FFFFFF,k2=0A8C1E";
 
-// --- Fall2Xmas Tree Lighting: a spark spirals up from the base lighting each bulb, and the star bursts on top ---
+// --- Fall2Xmas Tree Lighting: a spark spirals up from the base lighting each bulb, the star bursts on top, then the bulbs sparkle out back to fall ---
 // Bulbs: Intensity sets the share that are Color 3 (white); the rest are split evenly between Color 1 and Color 2.
 void mode_f2x_tree_lighting(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
@@ -15045,7 +15045,10 @@ void mode_f2x_tree_lighting(void) {
     if (p.y > 0.93f) bulb = F2_STAR;                                      // star on top
     T3C c;
     if (S.back) {
-      c = t3Lerp(fall, bulb, S.s);                                        // fade back to fall
+      const float q = (1.0f - S.s) * 1.08f, th = t3Hash(p.i * 5381U + S.cyc * 31U);   // sparkle out: each bulb flips at its own moment
+      if (q < th) c = bulb;
+      else if (q - th < 0.08f) c = t3Lerp(fall, T3_WHITE, 1.0f - (q - th) / 0.08f);  // white sparkle as it goes
+      else c = fall;
     } else {
       const float d = frzAngDiff(p.a, turns * T3_TAU * p.y);
       const float tp = p.y + d / (turns * T3_TAU);                       // when the spark passes this pixel
