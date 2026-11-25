@@ -15004,20 +15004,18 @@ void mode_f2x_cider_candy(void) {
   const float twist = SEGMENT.custom2 / 255.0f * 6.0f;                   // Custom 2: how much the stripes twist
   const float spark = SEGMENT.custom3 / 31.0f;                           // Custom 3: sparkle
   const bool pin = SEGMENT.check1;                                       // Check 1: thin Color 3 pinstripe
-  const T3C red = t3C(SEGCOLOR(0)), wht = t3Mul(t3C(SEGCOLOR(1)), 0.8f), acc = t3C(SEGCOLOR(2));
+  const T3C red = t3C(SEGCOLOR(0)), wht = t3C(SEGCOLOR(1)), acc = t3C(SEGCOLOR(2));
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
     const float u = t3Frac(p.a / T3_TAU * nS + p.y * twist - T * 0.15f);
-    const float ls = frzSmooth(0.0f, 1.0f, S.s * 1.4f - (1.0f - p.y) * 0.4f);
+    const float ls = frzSmooth(0.0f, 1.0f, (S.s * 1.4f - (1.0f - p.y) * 0.4f) * 2.5f);   // short pour edge
     const float soft = 0.5f + 0.5f * sin_t(u * T3_TAU);                  // fall: soft cider swirl
     T3C fall = t3Lerp(t3Mul(f2Fall(u * 0.5f + p.y * 0.2f + T * 0.02f), 0.55f), T3C{ 255, 205, 140 }, soft * soft * 0.35f);
-    T3C xm;
-    const float edge = 0.03f;
-    if (pin && u > 0.40f && u < 0.48f) xm = acc;
-    else xm = t3Lerp(red, wht, frzSmooth(0.5f - edge, 0.5f + edge, u) * (1.0f - frzSmooth(1.0f - edge, 1.0f, u)));
+    // crisp stripes: hard edges, no blending between red and white
+    const T3C xm = (pin && u > 0.42f && u < 0.47f) ? acc : (u < 0.5f ? red : wht);
     T3C c = t3Lerp(fall, xm, ls);
-    if (t3Hash(p.i * 4049U + 11U) < spark * 0.5f) c = t3Lerp(c, t3Lerp(F2_GOLD, T3_WHITE, ls), frzTw(p, T, 2.5f));
+    if (t3Hash(p.i * 4049U + 11U) < spark * 0.5f) c = t3Lerp(c, t3Lerp(F2_GOLD, T3_WHITE, ls), frzTw(p, T, 2.5f) * (1.0f - 0.6f * ls));   // lighter over the stripes so they stay crisp
     t3Set(i, c);
   }
 }
