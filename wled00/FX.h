@@ -434,10 +434,11 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_TG_GRATITUDE_GLOW            185  // was a removed sound-reactive effect (Rocktaves)
 // Fall to Christmas effects
 #define FX_MODE_F2X_LEAF_TO_SNOW                 186  // was a removed sound-reactive effect (2D Akemi)
-#define FX_MODE_F2X_PUMPKIN_ORNAMENT             198  // was a removed sound-reactive effect (GEQ particle)
-#define FX_MODE_F2X_MOON_TO_STAR                 199  // was a removed sound-reactive effect (Center GEQ particle)
+#define FX_MODE_F2X_HARVEST_HOLLY                198  // was a removed sound-reactive effect (GEQ particle)
+#define FX_MODE_F2X_WIND_SWEEP                   199  // was a removed sound-reactive effect (Center GEQ particle)
 #define FX_MODE_F2X_CIDER_CANDY                  212  // was a removed sound-reactive effect (1D GEQ)
 #define FX_MODE_F2X_TREE_LIGHTING                214  // was a removed sound-reactive effect (Sonic Stream)
+#define FX_MODE_F2X_LIGHTS_POP                   215  // was a removed sound-reactive effect (Sonic Boom)
 // AI: end
 #define MODE_COUNT                     251
 

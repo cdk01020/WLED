@@ -14911,89 +14911,100 @@ void mode_f2x_leaf_to_snow(void) {
 }
 static const char _data_FX_MODE_F2X_LEAF_TO_SNOW[] PROGMEM = "Fall2Xmas Leaf to Snow@!,Leaves & flakes,Season length,Bulbs,Sway,Snow cap;Bulb 1,Bulb 2,White bulbs;!;1;sx=128,ix=128,c1=128,c2=128,c3=16,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
 
-// --- Fall2Xmas Pumpkin to Ornament: glowing pumpkin lanterns pop one at a time into shiny Christmas ornaments ---
-void mode_f2x_pumpkin_ornament(void) {
-  float T; if (!t3Time(T)) { mode_static(); return; }
-  T *= F2_TS;
-  const F2S S = f2Season(T);
-  const int nO = 8 + (SEGMENT.intensity * 22) / 255;                     // Intensity: how many (8..30)
-  const float size = 0.045f + SEGMENT.custom2 / 255.0f * 0.06f;          // Custom 2: size
-  const float glint = SEGMENT.custom3 / 31.0f;                           // Custom 3: shine on the ornaments
-  const bool pop = SEGMENT.check1;                                       // Check 1: white flash as each one changes
-  struct Orb { float x, y, z, r, sw; };
-  Orb o[30];
-  for (int k = 0; k < nO; k++) {
-    const uint32_t sd = S.cyc * 977U + k;
-    const float y = 0.08f + 0.82f * ((k + t3HashS(sd, 1)) / nO), a = t3HashS(sd, 2) * T3_TAU, r = t3ConeR(y);
-    o[k] = { cos_t(a) * r, y, sin_t(a) * r, size * (0.8f + 0.4f * t3HashS(sd, 3)) * (1.0f - 0.35f * y), 0.08f + 0.8f * t3HashS(sd, 4) };
-  }
-  const float ga = T * 0.7f;                                             // the shine slides around each ornament
-  T3P p;
-  for (int i = 0; i < SEGLEN; i++) {
-    t3Point(i, p);
-    T3C bg = t3Lerp(t3Mul(F2_PUMPKIN, 0.05f), t3Mul(F2_PINE, 0.8f), S.s);
-    bg = t3Lerp(bg, F2_GOLD, frzTw(p, T, 1.2f) * (0.25f + 0.35f * S.s));
-    T3C c = bg;
-    for (int k = 0; k < nO; k++) {
-      const float dx = p.x - o[k].x, dy = p.y - o[k].y, dz = p.z - o[k].z, d = sqrtf(dx * dx + dy * dy + dz * dz);
-      if (d >= o[k].r) continue;
-      const float e = d / o[k].r, t = (S.s - o[k].sw) / 0.05f;
-      const T3C pk = t3Mul(f2Fall(0.35f + 0.15f * t3HashS(k, 5)), (1.0f - 0.55f * e) * (0.6f + 0.4f * frzNoise(T * 3.0f + k * 7.0f, 0.0f, 0.0f)));
-      T3C orn = t3Mul(f2Xmas(k + S.cyc), 0.45f + 0.55f * (1.0f - e * e));
-      const float gx = o[k].x + cos_t(ga + k) * o[k].r * 0.45f, gy = o[k].y + o[k].r * 0.35f, gz = o[k].z + sin_t(ga + k) * o[k].r * 0.45f;
-      const float gd = sqrtf((p.x - gx) * (p.x - gx) + (p.y - gy) * (p.y - gy) + (p.z - gz) * (p.z - gz)) / (o[k].r * 0.4f);
-      if (gd < 1.0f) orn = t3Lerp(orn, T3_WHITE, (1.0f - gd) * glint);
-      if (t <= 0.0f) c = pk;
-      else if (t < 1.0f) c = pop ? t3Lerp(t3Lerp(pk, orn, t), T3_WHITE, 1.0f - t) : t3Lerp(pk, orn, t);
-      else c = orn;
-      c = t3Lerp(bg, c, frzSmooth(1.0f, 0.75f, e));                       // soft edge
-      break;
-    }
-    t3Set(i, c);
-  }
+// Christmas bulb color for a pixel: share ws is Color 3 (white), the rest split evenly between Color 1 and Color 2
+static inline T3C f2Bulb(uint16_t i, float ws) {
+  const float h = t3Hash(i * 5557U + 9U);
+  return f2Xmas(h < ws ? 2 : (t3Hash(i * 3119U + 1U) < 0.5f ? 0 : 1));
 }
-static const char _data_FX_MODE_F2X_PUMPKIN_ORNAMENT[] PROGMEM = "Fall2Xmas Pumpkin to Ornament@!,Count,Season length,Size,Shine,Pop flash;Ornament 1,Ornament 2,Ornament 3;!;1;sx=128,ix=128,c1=128,c2=128,c3=20,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
 
-// --- Fall2Xmas Moon to Star: a harvest moon circles the tree, rises to the top and becomes the star, then bulbs light from the top down ---
-void mode_f2x_moon_to_star(void) {
+// --- Fall2Xmas Harvest to Holly: evergreen with red holly berries climbs the tree on a ragged, sparking front, then sparkles out back to fall ---
+void mode_f2x_harvest_holly(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
   T *= F2_TS;
   const F2S S = f2Season(T);
-  const float bulbs = 0.15f + SEGMENT.intensity / 255.0f * 0.5f;         // Intensity: how many bulbs
-  const float mr0 = 0.11f + SEGMENT.custom2 / 255.0f * 0.12f;            // Custom 2: moon size
-  const int rays = 3 + (SEGMENT.custom3 * 7) / 31;                       // Custom 3: number of star rays
-  const bool showRays = SEGMENT.check1;                                  // Check 1: star rays sweep the tree
-  const float e = frzSmooth(0.0f, 0.6f, S.s);                            // moon rise
-  const float my = 0.42f + 0.53f * e, mr = mr0 * (1.0f - 0.7f * e), ma = T * 0.15f;
-  const float mR = t3ConeR(my), mx = cos_t(ma) * mR * (1.0f - e), mz = sin_t(ma) * mR * (1.0f - e);
-  const T3C moonC = t3Lerp(T3C{ 255, 120, 20 }, F2_STAR, e);
-  const float star = frzSmooth(0.5f, 0.7f, S.s);
-  const float lit = 1.02f - frzSmooth(0.6f, 1.0f, S.s) * 1.08f;          // bulbs on above this height
+  const float berries = 0.86f - SEGMENT.intensity / 255.0f * 0.22f;     // Intensity: more holly berries
+  const float rough = SEGMENT.custom2 / 255.0f * 0.25f;                  // Custom 2: how ragged the climbing front is
+  const float twk = SEGMENT.custom3 / 31.0f;                             // Custom 3: white twinkle
+  const bool edge = SEGMENT.check1;                                      // Check 1: gold sparks along the front
+  const T3C berry = t3C(SEGCOLOR(0)), holly = t3C(SEGCOLOR(1)), white = t3C(SEGCOLOR(2));
+  const float h = -0.15f - rough * 0.5f + S.s * (1.3f + rough);          // front height
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
-    T3C c = t3Lerp(T3C{ 4, 4, 22 }, t3Mul(F2_PINE, 0.7f), star);
-    c = t3Lerp(c, t3Mul(F2_GOLD, 0.6f), frzTw(p, T, 1.0f) * 0.4f * (1.0f - star));   // fall: warm night twinkles
-    const float hb = t3Hash(p.i * 7331U + 5U);
-    if (p.y > lit && hb < bulbs) {
-      const float on = t3Clamp((p.y - lit) / 0.06f);
-      c = t3Lerp(c, f2Xmas((uint32_t)(t3Hash(p.i * 3119U + 1U) * 3.0f)), on * (0.8f + 0.2f * sin_t(T * 0.9f + hb * 40.0f)));
+    const float nx = p.x * FRZ_INV_R, nz = p.z * FRZ_INV_R;
+    const T3C fall = f2Foliage(p, T, 0.4f);
+    // holly: leafy greens with clusters of red berries and a few white twinkles
+    const float leaf = frzNoise(nx * 4.0f, p.y * 7.0f, nz * 4.0f);
+    T3C xm = t3Mul(holly, 0.35f + 0.45f * leaf);
+    if (frzNoise(nx * 7.0f + 20.0f, p.y * 11.0f, nz * 7.0f) > berries) xm = t3Mul(berry, 0.85f + 0.15f * sin_t(T * 1.3f + p.i));
+    xm = t3Lerp(xm, white, frzTw(p, T, 1.6f) * twk);
+    T3C c;
+    if (S.back) {                                                         // sparkle out back to fall
+      const float q = (1.0f - S.s) * 1.08f, th = t3Hash(p.i * 5381U + S.cyc * 31U);
+      c = q < th ? xm : (q - th < 0.08f ? t3Lerp(fall, T3_WHITE, 1.0f - (q - th) / 0.08f) : fall);
+    } else {
+      const float g = h + rough * (frzNoise(nx * 3.0f, p.y * 2.0f + T * 0.3f, nz * 3.0f) - 0.5f) * 2.0f - p.y;   // > 0 below the front
+      c = g > 0.0f ? xm : fall;
+      if (edge && fabsf(g) < 0.035f && S.s > 0.0f && S.s < 1.0f) c = t3Lerp(c, F2_GOLD, (1.0f - fabsf(g) / 0.035f) * (t3Sparkle(p, T, 0.5f) ? 1.0f : 0.5f));
     }
-    if (showRays && star > 0.0f && p.y > 0.35f) {
-      const float cr = cos_t(rays * (p.a - T * 0.3f));
-      if (cr > 0.0f) { const float c2 = cr * cr, c4 = c2 * c2, c8 = c4 * c4;
-        c = t3Lerp(c, F2_STAR, c8 * c8 * star * 0.55f * frzSmooth(0.35f, 0.85f, p.y)); }
-    }
-    const float dx = p.x - mx, dy = p.y - my, dz = p.z - mz, d = sqrtf(dx * dx + dy * dy + dz * dz);
-    if (d < mr) {
-      const float crat = 0.7f + 0.3f * frzNoise(p.x * 30.0f, p.y * 30.0f, p.z * 30.0f) * (1.0f - e);
-      c = t3Lerp(c, t3Mul(moonC, crat), frzSmooth(1.0f, 0.7f, d / mr));
-    }
-    if (star > 0.0f && p.y > 0.9f) c = t3Lerp(c, F2_STAR, star * t3Clamp((p.y - 0.9f) / 0.05f) * (0.85f + 0.15f * sin_t(T * 3.0f)));
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_F2X_MOON_TO_STAR[] PROGMEM = "Fall2Xmas Moon to Star@!,Bulbs,Season length,Moon size,Star rays,Show rays;Bulb 1,Bulb 2,Bulb 3;!;1;sx=128,ix=128,c1=128,c2=128,c3=12,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
+static const char _data_FX_MODE_F2X_HARVEST_HOLLY[] PROGMEM = "Fall2Xmas Harvest to Holly@!,Berries,Season length,Front roughness,Twinkle,Edge sparks;Berries,Holly,Twinkle;!;1;sx=128,ix=128,c1=128,c2=128,c3=12,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
+
+// --- Fall2Xmas Wind Sweep: a gust sweeps once around the tree, flipping fall to Christmas bulbs as it passes, then sweeps them back ---
+void mode_f2x_wind_sweep(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T *= F2_TS;
+  const F2S S = f2Season(T);
+  const float ws = SEGMENT.intensity / 255.0f;                           // Intensity: white bulbs (default 1 in 6)
+  const float lean = (SEGMENT.custom2 / 255.0f - 0.5f) * 2.0f * T3_TAU;  // Custom 2: how much the sweep leans (twists up the tree)
+  const float glit = SEGMENT.custom3 / 31.0f;                            // Custom 3: glitter on the bulbs
+  const float dir = SEGMENT.check1 ? -1.0f : 1.0f;                       // Check 1: sweep the other way around
+  const float a0 = t3HashS(S.cyc, 9) * T3_TAU;                           // each loop starts from a new side
+  const float done = (S.back ? 1.0f - S.s : S.s) * (T3_TAU + 0.6f);      // how far round the gust has gone
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const T3C fall = f2Foliage(p, T, 0.4f);
+    T3C xm = t3Mul(f2Bulb(p.i, ws), 0.85f + 0.15f * sin_t(T * 0.9f + t3Hash(p.i * 7331U + 5U) * 40.0f));
+    if (t3Hash(p.i * 4049U + 11U) < glit * 0.5f) xm = t3Lerp(xm, T3_WHITE, frzTw(p, T, 2.0f));
+    const float rel = t3Frac((dir * (p.a - a0) - p.y * lean) / T3_TAU) * T3_TAU + 0.3f * t3Hash(p.i * 613U + S.cyc);
+    const float gap = done - rel;                                         // > 0 once the gust has passed this pixel
+    const T3C from = S.back ? xm : fall, to = S.back ? fall : xm;
+    T3C c = gap > 0.0f ? to : from;
+    if (gap > 0.0f && gap < 0.35f) c = t3Lerp(c, T3_WHITE, (1.0f - gap / 0.35f) * (t3Sparkle(p, T, 0.6f) ? 1.0f : 0.35f));   // sparkle on the gust
+    else if (gap <= 0.0f && gap > -0.25f) c = t3Lerp(c, F2_GOLD, 0.5f * (1.0f + gap / 0.25f));   // leaves stir just ahead of it
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_F2X_WIND_SWEEP[] PROGMEM = "Fall2Xmas Wind Sweep@!,White bulbs,Season length,Lean,Glitter,Reverse;Bulb 1,Bulb 2,White bulbs;!;1;sx=128,ix=43,c1=128,c2=160,c3=10,o1=0,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
+
+// --- Fall2Xmas Lights Pop On: Christmas bulbs pop on one at a time all over the fall tree until it's fully lit, then pop off back to fall ---
+void mode_f2x_lights_pop(void) {
+  float T; if (!t3Time(T)) { mode_static(); return; }
+  T *= F2_TS;
+  const F2S S = f2Season(T);
+  const float ws = SEGMENT.intensity / 255.0f;                           // Intensity: white bulbs (default 1 in 6)
+  const float flash = SEGMENT.custom2 / 255.0f;                          // Custom 2: white pop flash
+  const float glit = SEGMENT.custom3 / 31.0f;                            // Custom 3: glitter once lit
+  const bool clusters = SEGMENT.check1;                                  // Check 1: neighbors pop on together
+  T3P p;
+  for (int i = 0; i < SEGLEN; i++) {
+    t3Point(i, p);
+    const T3C fall = t3Lerp(f2Foliage(p, T, 0.4f), F2_GOLD, frzTw(p, T, 1.2f) * 0.5f);
+    T3C xm = t3Mul(f2Bulb(p.i, ws), 0.85f + 0.15f * sin_t(T * 0.9f + t3Hash(p.i * 7331U + 5U) * 40.0f));
+    if (t3Hash(p.i * 4049U + 11U) < glit * 0.5f) xm = t3Lerp(xm, T3_WHITE, frzTw(p, T, 2.0f));
+    float th = t3Hash(p.i * 5381U + S.cyc * 31U);                         // when this bulb pops
+    if (clusters) th = t3Clamp(0.7f * frzSmooth(0.2f, 0.8f, frzNoise(p.x * FRZ_INV_R * 3.0f + S.cyc * 5.0f, p.y * 5.0f, p.z * FRZ_INV_R * 3.0f)) + 0.3f * th);
+    const float q = (S.back ? 1.0f - S.s : S.s) * 1.08f, k = q - th;
+    const T3C from = S.back ? xm : fall, to = S.back ? fall : xm;
+    T3C c = k < 0.0f ? from : to;
+    if (k >= 0.0f && k < 0.05f) c = t3Lerp(c, T3_WHITE, (1.0f - k / 0.05f) * (S.back ? 1.0f : flash));
+    t3Set(i, c);
+  }
+}
+static const char _data_FX_MODE_F2X_LIGHTS_POP[] PROGMEM = "Fall2Xmas Lights Pop On@!,White bulbs,Season length,Pop flash,Glitter,In clusters;Bulb 1,Bulb 2,White bulbs;!;1;sx=128,ix=43,c1=128,c2=170,c3=10,o1=0,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
 
 // --- Fall2Xmas Cider to Candy Cane: warm cider spirals turn into a crisp candy cane spiral, poured from the top ---
 // The stripes keep the same slant all the way up: where the tree is narrow they wrap around faster,
@@ -15165,8 +15176,9 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_TG_FALLING_LEAVES, &mode_tg_falling_leaves, _data_FX_MODE_TG_FALLING_LEAVES);
   addEffect(FX_MODE_TG_GRATITUDE_GLOW, &mode_tg_gratitude_glow, _data_FX_MODE_TG_GRATITUDE_GLOW);
   addEffect(FX_MODE_F2X_LEAF_TO_SNOW, &mode_f2x_leaf_to_snow, _data_FX_MODE_F2X_LEAF_TO_SNOW);
-  addEffect(FX_MODE_F2X_PUMPKIN_ORNAMENT, &mode_f2x_pumpkin_ornament, _data_FX_MODE_F2X_PUMPKIN_ORNAMENT);
-  addEffect(FX_MODE_F2X_MOON_TO_STAR, &mode_f2x_moon_to_star, _data_FX_MODE_F2X_MOON_TO_STAR);
+  addEffect(FX_MODE_F2X_HARVEST_HOLLY, &mode_f2x_harvest_holly, _data_FX_MODE_F2X_HARVEST_HOLLY);
+  addEffect(FX_MODE_F2X_WIND_SWEEP, &mode_f2x_wind_sweep, _data_FX_MODE_F2X_WIND_SWEEP);
+  addEffect(FX_MODE_F2X_LIGHTS_POP, &mode_f2x_lights_pop, _data_FX_MODE_F2X_LIGHTS_POP);
   addEffect(FX_MODE_F2X_CIDER_CANDY, &mode_f2x_cider_candy, _data_FX_MODE_F2X_CIDER_CANDY);
   addEffect(FX_MODE_F2X_TREE_LIGHTING, &mode_f2x_tree_lighting, _data_FX_MODE_F2X_TREE_LIGHTING);
   // AI: end
