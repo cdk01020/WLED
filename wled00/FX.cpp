@@ -15020,50 +15020,46 @@ void mode_f2x_cider_candy(void) {
 }
 static const char _data_FX_MODE_F2X_CIDER_CANDY[] PROGMEM = "Fall2Xmas Cider to Candy Cane@!,Stripes,Season length,Twist,Sparkle,Pinstripe;Stripe 1,Stripe 2,Pinstripe;!;1;sx=128,ix=80,c1=128,c2=110,c3=14,o1=1,pal=0,k0=E00A14,k1=FFFFFF,k2=0A8C1E";
 
-// --- Fall2Xmas Tree Lighting: a 3-2-1 countdown, then a spark spirals up from the base lighting each bulb, and the star bursts on top ---
+// --- Fall2Xmas Tree Lighting: a spark spirals up from the base lighting each bulb, and the star bursts on top ---
+// Bulbs: Intensity sets the share that are Color 3 (white); the rest are split evenly between Color 1 and Color 2.
 void mode_f2x_tree_lighting(void) {
   float T; if (!t3Time(T)) { mode_static(); return; }
   T *= F2_TS;
   const F2S S = f2Season(T);
-  const float colorBulbs = SEGMENT.intensity / 255.0f;                   // Intensity: color bulbs vs warm white
+  const float whiteShare = SEGMENT.intensity / 255.0f;                   // Intensity: white bulbs (default 1 in 5)
   const float turns = 2.0f + SEGMENT.custom2 / 255.0f * 6.0f;            // Custom 2: turns of the spark around the tree
   const float glit = SEGMENT.custom3 / 31.0f;                            // Custom 3: glitter once lit
-  const bool count = SEGMENT.check1;                                     // Check 1: 3-2-1 countdown flashes
+  const bool sparks = SEGMENT.check1;                                    // Check 1: sparks trail behind the spark
   const float s = S.back ? 1.0f : S.s;
-  const float cd = t3Clamp(s / 0.25f);                                   // countdown part
-  const float f = -0.12f + t3Clamp((s - 0.25f) / 0.6f) * 1.26f;          // spark height along the spiral
+  const float f = -0.12f + t3Clamp(s / 0.85f) * 1.26f;                   // spark height along the spiral
   const float burst = s > 0.85f ? 1.0f - (s - 0.85f) / 0.15f : 0.0f;
-  const float cf = t3Frac(cd * 3.0f), flash = (count && s > 0.0f && s < 0.25f) ? (1.0f - cf) * (1.0f - cf) * (1.0f - cf) * (1.0f - cf) : 0.0f;
-  const uint32_t cnum = (uint32_t)(cd * 3.0f);
+  const float dim = 1.0f - 0.9f * frzSmooth(0.0f, 0.1f, s);              // the unlit tree fades down as the spark starts
   T3P p;
   for (int i = 0; i < SEGLEN; i++) {
     t3Point(i, p);
     const T3C fall = f2Foliage(p, T, 0.4f * (0.8f + 0.2f * sin_t(T * 0.8f)));
     const float hb = t3Hash(p.i * 7331U + 5U);
-    T3C bulb = hb < colorBulbs ? f2Xmas((uint32_t)(t3Hash(p.i * 3119U + 1U) * 3.0f)) : F2_WARM;
+    T3C bulb = hb < whiteShare ? f2Xmas(2) : f2Xmas(t3Hash(p.i * 3119U + 1U) < 0.5f ? 0 : 1);
     bulb = t3Mul(bulb, 0.85f + 0.15f * sin_t(T * 0.9f + hb * 40.0f));
     if (t3Hash(p.i * 4049U + 11U) < glit * 0.5f) bulb = t3Lerp(bulb, T3_WHITE, frzTw(p, T, 2.0f));
     if (p.y > 0.93f) bulb = F2_STAR;                                      // star on top
     T3C c;
     if (S.back) {
       c = t3Lerp(fall, bulb, S.s);                                        // fade back to fall
-    } else if (s < 0.25f) {
-      c = t3Mul(fall, 1.0f - cd * 0.9f);                                  // the tree dims for the countdown
-      if (flash > 0.0f && t3Hash(p.i * 613U + cnum * 97U) < 0.35f) c = t3Lerp(c, F2_STAR, flash);
     } else {
       const float d = frzAngDiff(p.a, turns * T3_TAU * p.y);
       const float tp = p.y + d / (turns * T3_TAU);                       // when the spark passes this pixel
       const float gap = f - tp;
       if (gap > 0.0f) c = gap < 0.03f ? t3Lerp(bulb, T3_WHITE, 1.0f - gap / 0.03f) : bulb;
-      else c = t3Mul(fall, 0.1f);
-      if (fabsf(gap) < 0.012f) c = t3Lerp(c, T3C{ 255, 200, 90 }, 1.0f - fabsf(gap) / 0.012f);
-      else if (gap > 0.0f && gap < 0.06f && t3Sparkle(p, T, 0.25f)) c = t3Lerp(c, F2_STAR, 0.8f);   // sparks trailing the spark
+      else c = t3Mul(fall, dim);
+      if (s > 0.0f && fabsf(gap) < 0.012f) c = t3Lerp(c, T3C{ 255, 200, 90 }, 1.0f - fabsf(gap) / 0.012f);
+      else if (sparks && gap > 0.0f && gap < 0.06f && t3Sparkle(p, T, 0.25f)) c = t3Lerp(c, F2_STAR, 0.8f);
       if (burst > 0.0f) c = t3Lerp(c, F2_STAR, burst * burst * (0.3f + 0.7f * p.y));
     }
     t3Set(i, c);
   }
 }
-static const char _data_FX_MODE_F2X_TREE_LIGHTING[] PROGMEM = "Fall2Xmas Tree Lighting@!,Color bulbs,Season length,Spiral turns,Glitter,Countdown;Bulb 1,Bulb 2,Bulb 3;!;1;sx=128,ix=170,c1=128,c2=90,c3=10,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
+static const char _data_FX_MODE_F2X_TREE_LIGHTING[] PROGMEM = "Fall2Xmas Tree Lighting@!,White bulbs,Season length,Spiral turns,Glitter,Trailing sparks;Bulb 1,Bulb 2,White bulbs;!;1;sx=128,ix=51,c1=128,c2=90,c3=10,o1=1,pal=0,k0=C80A0A,k1=0A8C1E,k2=FFA040";
 // AI: end
 // AI: end
 // AI: end
