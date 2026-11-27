@@ -15304,6 +15304,8 @@ void WS2812FX::setupEffectData() {
   // now replace all pre-allocated effects
   // Sound-reactive effects removed on this branch to free effect slots for custom effects:
   //   Akemi, Blurz, DJ Light, Freqmap, Freqmatrix, Freqpixels, Freqwave, Funky Plank, GEQ, Gravcenter, Gravcentric, Gravfreq, Gravimeter, Juggles, Matripix, Midnoise, Noisefire, Noisemeter, Noisemove, PS Blobs, PS GEQ 1D, PS GEQ 2D, PS GEQ Nova, PS Sonic Boom, PS Sonic Stream, PS Spray, PS Springy, Pixels, Pixelwave, Plasmoid, Puddlepeak, Puddles, Ripple Peak, Rocktaves, Swirl, Waterfall, Waverly
+  // Removed to free effect slots (2D-only effects hidden on this 1D tree, plus a few 1D effects that do little on a tree):
+  //   Black Hole, Blobs, Colored Bursts, Crazy Bees, DNA, DNA Spiral, Distortion Waves, Drift, Drift Rose, Firenoise, Frizzles, Game Of Life, Ghost Rider, Hiphotic, ICU, Julia, Lissajous, Loading, Matrix, Metaballs, Noise2D, Octopus, PS Attractor, PS Ballpit, PS Box, PS Fire, PS Fireworks, PS Fuzzy Noise, PS Galaxy, PS Ghost Rider, PS Impact, PS Volcano, PS Vortex, PS Waterfall, Percent, Plasma Ball, Polar Lights, Pulser, Rotozoomer, Scrolling Text, Sindots, Soap, Spaceships, Squared Swirl, Sun Radiation, TV Simulator, Tartan, Traffic Light, Washing Machine, Waving Cell
   addEffect(FX_MODE_COPY, &mode_copy_segment, _data_FX_MODE_COPY);
   addEffect(FX_MODE_SPARKLE_BUILD_DRAIN, &mode_sparkle_build_drain, _data_FX_MODE_SPARKLE_BUILD_DRAIN);
   addEffect(FX_MODE_CHASE_FIREWORK_FILL, &mode_chase_firework_fill, _data_FX_MODE_CHASE_FIREWORK_FILL);
@@ -15418,7 +15420,6 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_CHASE_FLASH_RANDOM, &mode_chase_flash_random, _data_FX_MODE_CHASE_FLASH_RANDOM);
   addEffect(FX_MODE_CHASE_RAINBOW_WHITE, &mode_chase_rainbow_white, _data_FX_MODE_CHASE_RAINBOW_WHITE);
   addEffect(FX_MODE_COLORFUL, &mode_colorful, _data_FX_MODE_COLORFUL);
-  addEffect(FX_MODE_TRAFFIC_LIGHT, &mode_traffic_light, _data_FX_MODE_TRAFFIC_LIGHT);
   addEffect(FX_MODE_COLOR_SWEEP_RANDOM, &mode_color_sweep_random, _data_FX_MODE_COLOR_SWEEP_RANDOM);
   addEffect(FX_MODE_RUNNING_COLOR, &mode_running_color, _data_FX_MODE_RUNNING_COLOR);
   addEffect(FX_MODE_AURORA, &mode_aurora, _data_FX_MODE_AURORA);
@@ -15432,7 +15433,6 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_TETRIX, &mode_tetrix, _data_FX_MODE_TETRIX);
   addEffect(FX_MODE_FIRE_FLICKER, &mode_fire_flicker, _data_FX_MODE_FIRE_FLICKER);
   addEffect(FX_MODE_GRADIENT, &mode_gradient, _data_FX_MODE_GRADIENT);
-  addEffect(FX_MODE_LOADING, &mode_loading, _data_FX_MODE_LOADING);
   addEffect(FX_MODE_FAIRY, &mode_fairy, _data_FX_MODE_FAIRY);
   addEffect(FX_MODE_TWO_DOTS, &mode_two_dots, _data_FX_MODE_TWO_DOTS);
   addEffect(FX_MODE_FAIRYTWINKLE, &mode_fairytwinkle, _data_FX_MODE_FAIRYTWINKLE);
@@ -15444,7 +15444,6 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_TRICOLOR_WIPE, &mode_tricolor_wipe, _data_FX_MODE_TRICOLOR_WIPE);
   addEffect(FX_MODE_TRICOLOR_FADE, &mode_tricolor_fade, _data_FX_MODE_TRICOLOR_FADE);
   addEffect(FX_MODE_LIGHTNING, &mode_lightning, _data_FX_MODE_LIGHTNING);
-  addEffect(FX_MODE_ICU, &mode_icu, _data_FX_MODE_ICU);
   addEffect(FX_MODE_DUAL_LARSON_SCANNER, &mode_dual_larson_scanner, _data_FX_MODE_DUAL_LARSON_SCANNER);
   addEffect(FX_MODE_RANDOM_CHASE, &mode_random_chase, _data_FX_MODE_RANDOM_CHASE);
   addEffect(FX_MODE_OSCILLATE, &mode_oscillate, _data_FX_MODE_OSCILLATE);
@@ -15491,7 +15490,6 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_SINELON_DUAL, &mode_sinelon_dual, _data_FX_MODE_SINELON_DUAL);
   addEffect(FX_MODE_SINELON_RAINBOW, &mode_sinelon_rainbow, _data_FX_MODE_SINELON_RAINBOW);
   addEffect(FX_MODE_PLASMA, &mode_plasma, _data_FX_MODE_PLASMA);
-  addEffect(FX_MODE_PERCENT, &mode_percent, _data_FX_MODE_PERCENT);
   addEffect(FX_MODE_RIPPLE_RAINBOW, &mode_ripple_rainbow, _data_FX_MODE_RIPPLE_RAINBOW);
   addEffect(FX_MODE_HEARTBEAT, &mode_heartbeat, _data_FX_MODE_HEARTBEAT);
   addEffect(FX_MODE_PACIFICA, &mode_pacifica, _data_FX_MODE_PACIFICA);
@@ -15504,9 +15502,7 @@ void WS2812FX::setupEffectData() {
   addEffect(FX_MODE_PHASEDNOISE, &mode_phased_noise, _data_FX_MODE_PHASEDNOISE);
   addEffect(FX_MODE_FLOW, &mode_flow, _data_FX_MODE_FLOW);
   addEffect(FX_MODE_CHUNCHUN, &mode_chunchun, _data_FX_MODE_CHUNCHUN);  
-  addEffect(FX_MODE_WASHING_MACHINE, &mode_washing_machine, _data_FX_MODE_WASHING_MACHINE);
   addEffect(FX_MODE_BLENDS, &mode_blends, _data_FX_MODE_BLENDS);
-  addEffect(FX_MODE_TV_SIMULATOR, &mode_tv_simulator, _data_FX_MODE_TV_SIMULATOR);
   addEffect(FX_MODE_DYNAMIC_SMOOTH, &mode_dynamic_smooth, _data_FX_MODE_DYNAMIC_SMOOTH);
   addEffect(FX_MODE_PACMAN, &mode_pacman, _data_FX_MODE_PACMAN);
   addEffect(FX_MODE_SLOW_TRANSITION, &mode_slow_transition, _data_FX_MODE_SLOW_TRANSITION);
@@ -15519,58 +15515,14 @@ void WS2812FX::setupEffectData() {
 
   // --- 2D  effects ---
 #ifndef WLED_DISABLE_2D
-  addEffect(FX_MODE_2DPLASMAROTOZOOM, &mode_2Dplasmarotozoom, _data_FX_MODE_2DPLASMAROTOZOOM);
-  addEffect(FX_MODE_2DSPACESHIPS, &mode_2Dspaceships, _data_FX_MODE_2DSPACESHIPS);
-  addEffect(FX_MODE_2DCRAZYBEES, &mode_2Dcrazybees, _data_FX_MODE_2DCRAZYBEES);
 
   #ifdef WLED_PS_DONT_REPLACE_2D_FX
-  addEffect(FX_MODE_2DGHOSTRIDER, &mode_2Dghostrider, _data_FX_MODE_2DGHOSTRIDER);
-  addEffect(FX_MODE_2DBLOBS, &mode_2Dfloatingblobs, _data_FX_MODE_2DBLOBS);
   #endif
 
-  addEffect(FX_MODE_2DSCROLLTEXT, &mode_2Dscrollingtext, _data_FX_MODE_2DSCROLLTEXT);
-  addEffect(FX_MODE_2DDRIFTROSE, &mode_2Ddriftrose, _data_FX_MODE_2DDRIFTROSE);
-  addEffect(FX_MODE_2DDISTORTIONWAVES, &mode_2Ddistortionwaves, _data_FX_MODE_2DDISTORTIONWAVES);
-  addEffect(FX_MODE_2DNOISE, &mode_2Dnoise, _data_FX_MODE_2DNOISE);
-  addEffect(FX_MODE_2DFIRENOISE, &mode_2Dfirenoise, _data_FX_MODE_2DFIRENOISE);
-  addEffect(FX_MODE_2DSQUAREDSWIRL, &mode_2Dsquaredswirl, _data_FX_MODE_2DSQUAREDSWIRL);
 
   //non audio
-  addEffect(FX_MODE_2DDNA, &mode_2Ddna, _data_FX_MODE_2DDNA);
-  addEffect(FX_MODE_2DMATRIX, &mode_2Dmatrix, _data_FX_MODE_2DMATRIX);
-  addEffect(FX_MODE_2DMETABALLS, &mode_2Dmetaballs, _data_FX_MODE_2DMETABALLS);
-  addEffect(FX_MODE_2DPULSER, &mode_2DPulser, _data_FX_MODE_2DPULSER);
-  addEffect(FX_MODE_2DDRIFT, &mode_2DDrift, _data_FX_MODE_2DDRIFT);
-  addEffect(FX_MODE_2DSUNRADIATION, &mode_2DSunradiation, _data_FX_MODE_2DSUNRADIATION);
-  addEffect(FX_MODE_2DCOLOREDBURSTS, &mode_2DColoredBursts, _data_FX_MODE_2DCOLOREDBURSTS);
-  addEffect(FX_MODE_2DJULIA, &mode_2DJulia, _data_FX_MODE_2DJULIA);
-  addEffect(FX_MODE_2DGAMEOFLIFE, &mode_2Dgameoflife, _data_FX_MODE_2DGAMEOFLIFE);
-  addEffect(FX_MODE_2DTARTAN, &mode_2Dtartan, _data_FX_MODE_2DTARTAN);
-  addEffect(FX_MODE_2DPOLARLIGHTS, &mode_2DPolarLights, _data_FX_MODE_2DPOLARLIGHTS);
-  addEffect(FX_MODE_2DLISSAJOUS, &mode_2DLissajous, _data_FX_MODE_2DLISSAJOUS);
-  addEffect(FX_MODE_2DFRIZZLES, &mode_2DFrizzles, _data_FX_MODE_2DFRIZZLES);
-  addEffect(FX_MODE_2DPLASMABALL, &mode_2DPlasmaball, _data_FX_MODE_2DPLASMABALL);
-  addEffect(FX_MODE_2DHIPHOTIC, &mode_2DHiphotic, _data_FX_MODE_2DHIPHOTIC);
-  addEffect(FX_MODE_2DSINDOTS, &mode_2DSindots, _data_FX_MODE_2DSINDOTS);
-  addEffect(FX_MODE_2DDNASPIRAL, &mode_2DDNASpiral, _data_FX_MODE_2DDNASPIRAL);
-  addEffect(FX_MODE_2DBLACKHOLE, &mode_2DBlackHole, _data_FX_MODE_2DBLACKHOLE);
-  addEffect(FX_MODE_2DSOAP, &mode_2Dsoap, _data_FX_MODE_2DSOAP);
-  addEffect(FX_MODE_2DOCTOPUS, &mode_2Doctopus, _data_FX_MODE_2DOCTOPUS);
-  addEffect(FX_MODE_2DWAVINGCELL, &mode_2Dwavingcell, _data_FX_MODE_2DWAVINGCELL);
 
 #ifndef WLED_DISABLE_PARTICLESYSTEM2D
-  addEffect(FX_MODE_PARTICLEVOLCANO, &mode_particlevolcano, _data_FX_MODE_PARTICLEVOLCANO);
-  addEffect(FX_MODE_PARTICLEFIRE, &mode_particlefire, _data_FX_MODE_PARTICLEFIRE);
-  addEffect(FX_MODE_PARTICLEFIREWORKS, &mode_particlefireworks, _data_FX_MODE_PARTICLEFIREWORKS);
-  addEffect(FX_MODE_PARTICLEVORTEX, &mode_particlevortex, _data_FX_MODE_PARTICLEVORTEX);
-  addEffect(FX_MODE_PARTICLEPERLIN, &mode_particleperlin, _data_FX_MODE_PARTICLEPERLIN);
-  addEffect(FX_MODE_PARTICLEPIT, &mode_particlepit, _data_FX_MODE_PARTICLEPIT);
-  addEffect(FX_MODE_PARTICLEBOX, &mode_particlebox, _data_FX_MODE_PARTICLEBOX);
-  addEffect(FX_MODE_PARTICLEATTRACTOR, &mode_particleattractor, _data_FX_MODE_PARTICLEATTRACTOR); // 872 bytes
-  addEffect(FX_MODE_PARTICLEIMPACT, &mode_particleimpact, _data_FX_MODE_PARTICLEIMPACT);
-  addEffect(FX_MODE_PARTICLEWATERFALL, &mode_particlewaterfall, _data_FX_MODE_PARTICLEWATERFALL);
-  addEffect(FX_MODE_PARTICLEGHOSTRIDER, &mode_particleghostrider, _data_FX_MODE_PARTICLEGHOSTRIDER);
-  addEffect(FX_MODE_PARTICLEGALAXY, &mode_particlegalaxy, _data_FX_MODE_PARTICLEGALAXY);
 #endif // WLED_DISABLE_PARTICLESYSTEM2D
 #endif // WLED_DISABLE_2D
 
