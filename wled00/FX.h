@@ -442,8 +442,10 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 // Showstopper effects
 #define FX_MODE_3D_RAINDROP_RIPPLES          197  // free slot
 #define FX_MODE_3D_LIGHT_SCULPTURE           201  // free slot
+#define FX_MODE_3D_XMAS_SWEATER              216  // free slot
+#define FX_MODE_3D_XMAS_MIRROR               251  // new slot past the old effect list
 // AI: end
-#define MODE_COUNT                     251
+#define MODE_COUNT                     252
 
 
 #define TRANSITION_FADE            0x00  // universal
