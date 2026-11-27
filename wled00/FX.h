@@ -444,6 +444,12 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_3D_LIGHT_SCULPTURE           201  // free slot
 #define FX_MODE_3D_XMAS_SWEATER              216  // free slot
 #define FX_MODE_3D_XMAS_MIRROR               251  // new slot past the old effect list
+#define FX_MODE_3D_XMAS_QUILT                  35  // freed slot
+#define FX_MODE_3D_XMAS_GOLD_FOIL              47  // freed slot
+#define FX_MODE_3D_XMAS_WRAPPING_PAPER         58  // freed slot
+#define FX_MODE_3D_XMAS_POINSETTIA             98  // freed slot
+#define FX_MODE_3D_XMAS_VELVET_SWAGS           113  // freed slot
+#define FX_MODE_3D_XMAS_CARDINALS              114  // freed slot
 // AI: end
 #define MODE_COUNT                     252
 
