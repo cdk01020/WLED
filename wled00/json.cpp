@@ -1265,7 +1265,11 @@ void respondModeData(AsyncWebServerRequest* request) {
         strncpy_P(lineBuffer, strip.getModeData(fx_index), sizeof(lineBuffer)-1); // Copy to stack buffer for strchr
         lineBuffer[sizeof(lineBuffer)-1] = '\0';
         if (lineBuffer[0] == 0) { ++fx_index; offset = 0; continue; }
-        const char* dataPtr = strchr(lineBuffer,'@'); // Find '@', if there is one
+        char* dataPtr = strchr(lineBuffer,'@'); // Find '@', if there is one
+        if (dataPtr) { // drop the 5th section (defaults): the UI never reads it, defaults are applied on the device
+          unsigned semis = 0;
+          for (char* q = dataPtr + 1; *q; ++q) if (*q == ';' && ++semis == 4) { *q = '\0'; break; }
+        }
         size_t n = writeJSONStringElement(element, sizeof(element), dataPtr ? dataPtr + 1 : "");
         if (n == 0) { element[0] = ','; element[1] = '"'; element[2] = '"'; n = 3; } // cannot happen; keep JSON valid
         if (fx_index == 0) element[0] = '[';
